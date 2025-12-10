@@ -1,0 +1,16 @@
+# === BACKEND ===
+backend/.env
+backend/uploads/
+backend/node_modules/
+backend/package-lock.json
+
+# === FRONTEND ===
+frontend/node_modules/
+frontend/.env
+frontend/build/
+frontend/dist/
+
+# === GÉNÉRAL ===
+.DS_Store
+Thumbs.db
+*.log

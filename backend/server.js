@@ -780,11 +780,12 @@ app.post('/api/admin/reset-etablissement-password', authenticateToken, async (re
 app.use('/uploads', express.static('uploads'));
 
 // DÉMARRAGE
-server.listen(PORT, () => {
-  console.log(`SERVEUR CISCO ULTIME → http://localhost:${PORT}`);
+const port = process.env.PORT || 5000;
+server.listen(port, '0.0.0.0', () => {
+  console.log(`SERVEUR CISCO ULTIME → http://0.0.0.0:${port}`);
   console.log(`Admin : admin / admin123`);
   console.log(`Établissement : etab_401030301 / sisco2024`);
   console.log(`NOTIFICATIONS EN TEMPS RÉEL ACTIVÉES !`);
-  console.log(`SERVEUR CISCO + CHAT → http://localhost:${PORT}`);
+});
   
 });

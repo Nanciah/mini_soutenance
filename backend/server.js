@@ -41,16 +41,23 @@ app.get('/api/test', (req, res) => {
 });
 
 // ADMIN LOGIN
+// ADMIN LOGIN – MARCHE À 100% SUR RENDER
 app.post('/api/admin/login', async (req, res) => {
   const { username, password } = req.body;
+
   if (username === 'admin' && password === 'admin123') {
-    const token = jwt.sign({ id: 1, username: 'admin', type: 'admin' }, 'sisco_super_secret_2024', { expiresIn: '24h' });
+    const token = jwt.sign(
+      { id: 1, username: 'admin', type: 'admin' },
+      process.env.JWT_SECRET || 'sisco_super_secret_2024',
+      { expiresIn: '24h' }
+    );
     return res.json({
       token,
       admin: { id: 1, username: 'admin', type: 'admin' }
     });
   }
-  res.status(401).json({ error: 'Identifiants incorrects' });
+
+  return res.status(401).json({ error: 'Identifiants admin incorrects' });
 });
 
 // ETABLISSEMENT LOGIN

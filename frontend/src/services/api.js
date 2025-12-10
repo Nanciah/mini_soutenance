@@ -1,13 +1,14 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+// URL de l'API : en ligne sur Render, en local sur localhost
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://mini-soutenance.onrender.com/api';
 
-// Configuration axios avec intercepteur pour le token
+// Configuration axios
 const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
-// Intercepteur pour ajouter le token aux requêtes
+// Intercepteur pour ajouter le token
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -16,12 +17,10 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Intercepteur pour gérer les erreurs d'authentification
+// Intercepteur pour déconnexion auto en cas de 401/403
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -34,10 +33,8 @@ api.interceptors.response.use(
   }
 );
 
-// Services API
+// Services
 export const etablissementService = {
-  getEtablissements: () => api.get('/etablissements'),
-  searchEtablissements: (params) => api.get('/etablissements/search', { params }),
   login: (credentials) => api.post('/etablissements/login', credentials),
 };
 
@@ -55,10 +52,6 @@ export const inscriptionService = {
 
 export const examenService = {
   getExamens: () => api.get('/examens'),
-};
-
-export const testService = {
-  testDB: () => api.get('/test-db'),
 };
 
 export default api;

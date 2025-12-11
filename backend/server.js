@@ -180,6 +180,21 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => console.log('Utilisateur déconnecté'));
 });
 
+// ADMIN – Accepter ou refuser une inscription
+app.put('/api/admin/inscriptions/:id', (req, res) => {
+  const id = parseInt(req.params.id);
+  const { statut, salle_examen, centre_examen } = req.body;
+
+  const inscription = inscriptions.find(i => i.id === id);
+  if (!inscription) return res.status(404).json({ error: 'Inscription non trouvée' });
+
+  if (statut) inscription.statut = statut;
+  if (salle_examen !== undefined) inscription.salle_examen = salle_examen;
+  if (centre_examen !== undefined) inscription.centre_examen = centre_examen;
+
+  res.json({ message: 'Inscription mise à jour avec succès' });
+});
+
 // 404
 app.use('*', (req, res) => res.status(404).json({ error: 'Route non trouvée' }));
 

@@ -82,7 +82,9 @@ app.post('/api/etablissements/login', async (req, res) => {
 });
 
 // AUTRES ROUTES NÉCESSAIRES (pour éviter les erreurs frontend crash)
-app.get('/api/admin/inscriptions', (req, res) => res.json({ data: [] }));
+app.get('/api/admin/inscriptions', (req, res) => {
+  res.json({ data: [] });
+});
 app.get('/api/admin/stats', (req, res) => res.json({
   inscriptions: { total: 0, en_attente: 0, accepte: 0, refuse: 0 }
 }));

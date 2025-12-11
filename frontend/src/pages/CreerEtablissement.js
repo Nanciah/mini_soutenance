@@ -8,12 +8,14 @@ const CreerEtablissement = () => {
   });
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
+   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/etablissements', {
+      const API_URL = process.env.REACT_APP_API_URL || 'https://mini-soutenance.onrender.com/api';
+      
+      const res = await fetch(`${API_URL}/etablissements`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -41,7 +43,6 @@ const CreerEtablissement = () => {
       setLoading(false);
     }
   };
-
   return (
     <div className="creer-etab-container">
       <div className="creer-card">

@@ -74,7 +74,7 @@ const Chat = () => {
         m.id === messageId ? { ...m, message: 'Suppression...', isSending: true } : m
       ));
 
-      const response = await fetch(`http://localhost:5000/api/chat/${messageId}`, {
+      const response = await fetch(`${API_URL}/chat/${messageId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
@@ -93,7 +93,7 @@ const Chat = () => {
     const chargerHistorique = async () => {
       setIsLoading(true);
       try {
-        const res = await fetch('http://localhost:5000/api/chat', {
+        const res = await fetch(`${API_URL}/chat`, {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         });
         const data = await res.json();
@@ -180,7 +180,7 @@ const Chat = () => {
     formData.append('file', file);
 
     try {
-      const response = await fetch('http://localhost:5000/api/chat/upload', {
+      const response = await fetch(`${API_URL}/chat/upload`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         body: formData
@@ -237,7 +237,7 @@ const Chat = () => {
     setIsUploading(false);
 
     try {
-      const response = await fetch('http://localhost:5000/api/chat/with-file', {
+      const response = await fetch(`${API_URL}/chat/with-file`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

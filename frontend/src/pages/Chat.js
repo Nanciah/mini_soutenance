@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import { toast } from 'react-toastify';
 
-const socket = io();
+const API_URL = process.env.REACT_APP_API_URL || 'https://mini-soutenance.onrender.com/api';
+const socket = io(API_URL.replace('/api', '')); // socket.io sur le bon domaine
 
 const Chat = () => {
   const [messages, setMessages] = useState([]);

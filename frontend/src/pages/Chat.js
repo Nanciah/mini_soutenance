@@ -1,14 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import { toast } from 'react-toastify';
-import { 
-  Send, Image as ImageIcon, File, Smile, Paperclip, 
-  X, Download, Trash2, CheckCircle, AlertCircle, 
-  Clock, Wifi, WifiOff, Users, Shield
-} from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_API_URL || 'https://mini-soutenance.onrender.com/api';
-const socket = io(API_URL.replace('/api', ''));
+const socket = io(API_URL.replace('/api', '')); // socket.io sur le bon domaine
 
 const Chat = () => {
   const [messages, setMessages] = useState([]);
@@ -20,14 +15,13 @@ const Chat = () => {
   const [filePreview, setFilePreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [showEmojis, setShowEmojis] = useState(false);
-  const [activeUsers, setActiveUsers] = useState(0);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const emojiPickerRef = useRef(null);
 
   const ALLOWED_FILE_TYPES = {
-    image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'],
+    image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
     document: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
     maxSize: 10 * 1024 * 1024
   };
@@ -45,22 +39,30 @@ const Chat = () => {
     '👍', '👎', '👏', '🙌', '🤝', '🙏', '✌️', '🤞', '🤟', '🤘',
     '👊', '✊', '🤛', '🤜', '💪', '👀', '👁️', '🧠', '👅', '👄',
     '🎉', '🎊', '🎁', '🎂', '🎈', '🎀', '🏆', '🥇', '🥈', '🥉',
-    '⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🎱', '🪀', '🏓'
+    '⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🎱', '🪀', '🏓',
+    '🍕', '🍔', '🍟', '🌭', '🍿', '🧁', '🎂', '🍦', '🍩', '🍪',
+    '☕', '🍵', '🥤', '🍺', '🍷', '🥂', '🍾', '🧃', '🧉', '🧊',
+    '🚗', '🚙', '🚕', '🚌', '🏎️', '🚓', '🚑', '🚒', '✈️', '🚀',
+    '🛸', '🚁', '⛵', '🚤', '🛳️', '🎠', '🎡', '🎢', '🚂', '🚊',
+    '🌍', '🌎', '🌏', '🗺️', '🏔️', '⛰️', '🌋', '🏕️', '🏖️', '🏜️',
+    '🏝️', '📱', '💻', '🖥', '⌚', '📷', '📹', '🎥', '📺', '📻',
+    '💾', '📀', '📼', '📸', '🔍', '💡', '🔦', '🕯️', '💰', '💎',
+    '🛒', '🎁', '📦', '✉️', '📨', '📩', '📤', '📥', '📆', '📅',
+    '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'
   ];
 
+// FONCTIONS DÉPLACÉES AU BON ENDROIT
   const handleNouveauMessage = (msg) => {
     setMessages(prev => [...prev, msg]);
     if (msg.userId !== user?.id && !document.hidden) {
-      const notification = msg.file 
-        ? `${msg.username} a envoyé un fichier` 
-        : `${msg.username}: ${msg.message.substring(0, 50)}${msg.message.length > 50 ? '...' : ''}`;
+      const notification = msg.file ? `Fichier ${msg.username} a envoyé un fichier` : `Nouveau message de ${msg.username}`;
       toast.info(notification);
     }
   };
 
   const handleMessageSupprime = (msgMisAJour) => {
     setMessages(prev => prev.map(m =>
-      m.id === msgMisAJour.id ? { ...m, message: 'Message supprimé', file: null, isDeleted: true } : m
+      m.id === msgMisAJour.id ? { ...m, message: msgMisAJour.message, file: null } : m
     ));
   };
 
@@ -69,7 +71,7 @@ const Chat = () => {
 
     try {
       setMessages(prev => prev.map(m =>
-        m.id === messageId ? { ...m, isDeleting: true } : m
+        m.id === messageId ? { ...m, message: 'Suppression...', isSending: true } : m
       ));
 
       const response = await fetch(`${API_URL}/chat/${messageId}`, {
@@ -78,14 +80,9 @@ const Chat = () => {
       });
 
       if (!response.ok) throw new Error();
-      
-      toast.success('Message supprimé avec succès');
-      setMessages(prev => prev.filter(m => m.id !== messageId));
+      toast.success('Message supprimé !');
     } catch (error) {
       toast.error('Erreur lors de la suppression');
-      setMessages(prev => prev.map(m =>
-        m.id === messageId ? { ...m, isDeleting: false } : m
-      ));
     }
   };
 
@@ -101,9 +98,6 @@ const Chat = () => {
         });
         const data = await res.json();
         setMessages(Array.isArray(data) ? data : []);
-        
-        // Simuler des utilisateurs actifs
-        setActiveUsers(Math.floor(Math.random() * 15) + 5);
       } catch (error) {
         toast.error('Erreur lors du chargement des messages');
       } finally {
@@ -115,24 +109,14 @@ const Chat = () => {
 
     socket.on('nouveau-message', handleNouveauMessage);
     socket.on('message-supprime', handleMessageSupprime);
-    socket.on('connect', () => {
-      setIsOnline(true);
-      toast.success('Connecté au chat');
-    });
-    socket.on('disconnect', () => {
-      setIsOnline(false);
-      toast.warning('Déconnecté du chat');
-    });
-    socket.on('user-count', (count) => {
-      setActiveUsers(count);
-    });
+    socket.on('connect', () => setIsOnline(true));
+    socket.on('disconnect', () => setIsOnline(false));
 
     return () => {
       socket.off('nouveau-message', handleNouveauMessage);
       socket.off('message-supprime', handleMessageSupprime);
       socket.off('connect');
       socket.off('disconnect');
-      socket.off('user-count');
     };
   }, []);
 
@@ -155,7 +139,7 @@ const Chat = () => {
     if (!file) return;
 
     if (file.size > ALLOWED_FILE_TYPES.maxSize) {
-      toast.error('Fichier trop volumineux (maximum 10MB)');
+      toast.error('Fichier trop volumineux (max 10MB)');
       return;
     }
 
@@ -264,26 +248,16 @@ const Chat = () => {
 
       if (!response.ok) throw new Error('Erreur envoi');
       setMessages(prev => prev.map(msg => msg.id === tempId ? { ...msg, isSending: false } : msg));
-      toast.success('Message envoyé');
     } catch (error) {
-      setMessages(prev => prev.map(msg => 
-        msg.id === tempId ? { ...msg, isSending: false, hasError: true } : msg
-      ));
+      setMessages(prev => prev.map(msg => msg.id === tempId ? { ...msg, isSending: false, hasError: true } : msg));
       toast.error('Erreur lors de l\'envoi');
+      if (messageContent) setNouveauMessage(messageContent);
+      if (selectedFile) setSelectedFile(selectedFile);
     }
   };
 
   const getAvatarColor = (username) => {
-    const colors = [
-      'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-      'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-      'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-      'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-      'linear-gradient(135deg, #30cfd0 0%, #330867 100%)',
-      'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
-      'linear-gradient(135deg, #5ee7df 0%, #b490ca 100%)'
-    ];
+    const colors = ['#1e3c72', '#2a5298', '#6a11cb', '#2575fc', '#ff6b6b', '#48c78e', '#f39c12', '#9b59b6'];
     const index = username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     return colors[index % colors.length];
   };
@@ -293,7 +267,7 @@ const Chat = () => {
   };
 
   const getFileIcon = (fileType) => {
-    return fileType === 'image' ? <ImageIcon size={20} /> : <File size={20} />;
+    return fileType === 'image' ? 'Photo' : 'Document';
   };
 
   const formatFileSize = (bytes) => {
@@ -337,67 +311,39 @@ const Chat = () => {
     if (date.toDateString() === hier.toDateString()) return "Hier";
     
     return date.toLocaleDateString('fr-FR', { 
-      weekday: 'long', day: 'numeric', month: 'long'
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
     });
   };
 
   const isMessageFromMe = (msg) => msg.userId === user?.id;
-  const canDeleteMessage = (msg) => (isMessageFromMe(msg) || user?.type === 'admin') && !msg.isDeleted;
+  const canDeleteMessage = (msg) => isMessageFromMe(msg) || user?.type === 'admin';
 
   const messagesAvecSeparateurs = [];
   messages.forEach((message, index) => {
-    const messageDate = new Date(message.created_at).toDateString();
-    const prevDate = index > 0 ? new Date(messages[index - 1].created_at).toDateString() : null;
-    
-    if (index === 0 || messageDate !== prevDate) {
-      messagesAvecSeparateurs.push({ 
-        type: 'dateSeparator', 
-        date: message.created_at, 
-        id: `date-${messageDate}` 
-      });
+    if (index === 0 || new Date(message.created_at).toDateString() !== new Date(messages[index - 1].created_at).toDateString()) {
+      messagesAvecSeparateurs.push({ type: 'dateSeparator', date: message.created_at, id: `date-${index}` });
     }
     messagesAvecSeparateurs.push({ ...message, type: 'message' });
   });
 
   return (
     <div className="chat-container">
-      {/* En-tête amélioré */}
       <div className="chat-header">
         <div className="header-content">
           <div className="chat-info">
-            <div className="chat-icon-wrapper">
-              <div className="chat-icon">
-                <Users size={24} />
-              </div>
-              <div className="online-indicator"></div>
-            </div>
+            <div className="chat-icon">Chat</div>
             <div>
               <h1>Discussion Générale</h1>
-              <p>Chat collaboratif en temps réel</p>
+              <p>Chat entre établissements et administrateur</p>
             </div>
           </div>
-          
-          <div className="header-stats">
-            <div className="stat-item">
-              <div className="stat-icon">
-                <Users size={16} />
-              </div>
-              <div className="stat-info">
-                <span className="stat-value">{activeUsers}</span>
-                <span className="stat-label">En ligne</span>
-              </div>
-            </div>
-            
-            <div className={`status-indicator ${isOnline ? 'online' : 'offline'}`}>
-              <div className="status-dot" />
-              <span>{isOnline ? 'Connecté' : 'Hors ligne'}</span>
-              {isOnline ? <Wifi size={16} /> : <WifiOff size={16} />}
-            </div>
+          <div className="status-indicator">
+            <div className={`status-dot ${isOnline ? 'online' : 'offline'}`} />
+            <span>{isOnline ? 'En ligne' : 'Hors ligne'}</span>
           </div>
         </div>
       </div>
 
-      {/* Zone des messages */}
       <div className="messages-container">
         {isLoading ? (
           <div className="loading-state">
@@ -406,18 +352,13 @@ const Chat = () => {
           </div>
         ) : messagesAvecSeparateurs.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon">
-              <Users size={64} />
-            </div>
-            <h3>Bienvenue dans le chat !</h3>
-            <p>Soyez le premier à envoyer un message.</p>
-            <div className="empty-tips">
-              <p>💡 Conseil : Partagez des fichiers, utilisez des émojis</p>
-            </div>
+            <div className="empty-icon">Chat</div>
+            <h3>Aucun message</h3>
+            <p>Soyez le premier à envoyer un message !</p>
           </div>
         ) : (
           <>
-            {messagesAvecSeparateurs.map((item, index) => {
+            {messagesAvecSeparateurs.map((item) => {
               if (item.type === 'dateSeparator') {
                 return (
                   <div key={item.id} className="date-separator">
@@ -430,154 +371,75 @@ const Chat = () => {
 
               const msg = item;
               const isMine = isMessageFromMe(msg);
-              const isDeleted = msg.isDeleted;
 
               return (
-                <div 
-                  key={msg.id} 
-                  className={`message-wrapper ${isMine ? 'own-message' : 'other-message'} ${isDeleted ? 'deleted-message' : ''}`}
-                >
+                <div key={msg.id} className={`message-wrapper ${isMine ? 'own-message' : 'other-message'}`} style={{ position: 'relative' }}>
                   {!isMine && (
-                    <div className="avatar" style={{ background: getAvatarColor(msg.username) }}>
+                    <div className="avatar" style={{ backgroundColor: getAvatarColor(msg.username) }}>
                       {getInitials(msg.username)}
-                      {msg.type === 'admin' && (
-                        <div className="admin-badge-icon">
-                          <Shield size={10} />
-                        </div>
-                      )}
                     </div>
                   )}
 
                   <div className="message-content">
                     <div className="message-bubble">
-                      {!isMine && !isDeleted && (
+                      {/* BOUTON DE SUPPRESSION */}
+                      {canDeleteMessage(msg) && !msg.message?.includes('supprimé') && (
+                        <button onClick={() => supprimerMessage(msg.id)} className="delete-message-btn" title="Supprimer">
+                          Trash
+                        </button>
+                      )}
+
+                      {!isMine && (
                         <div className="message-header">
                           <strong className="username">{msg.username}</strong>
-                          {msg.type === 'admin' && <span className="admin-badge">Administrateur</span>}
+                          {msg.type === 'admin' && <span className="admin-badge">Admin</span>}
                         </div>
                       )}
 
-                      {msg.file && !isDeleted && (
+                      {msg.file && (
                         <div className="file-attachment">
                           {msg.file.type === 'image' ? (
                             <div className="image-preview">
-                              <img 
-                                src={msg.file.url} 
-                                alt="Image" 
-                                className="uploaded-image"
-                                onClick={() => window.open(msg.file.url, '_blank')}
-                              />
-                              <div className="image-overlay">
-                                <div className="overlay-content">
-                                  <ImageIcon size={24} />
-                                  <span className="view-text">Agrandir</span>
-                                </div>
-                              </div>
+                              <img src={msg.file.url} alt="Image" className="uploaded-image" onClick={() => window.open(msg.file.url, '_blank')} />
+                              <div className="image-overlay"><span className="view-text">Voir l'image</span></div>
                             </div>
                           ) : (
-                            <a 
-                              href={msg.file.url} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              className="document-link"
-                            >
+                            <a href={msg.file.url} target="_blank" rel="noopener noreferrer" className="document-link">
                               <div className="document-preview">
-                                <div className="file-icon-wrapper">
-                                  {getFileIcon('document')}
-                                </div>
+                                <span className="file-icon">{getFileIcon(msg.file.type)}</span>
                                 <div className="file-info">
                                   <span className="file-name">{msg.file.name}</span>
                                   <span className="file-size">{formatFileSize(msg.file.size)}</span>
                                 </div>
-                                <div className="download-icon-wrapper">
-                                  <Download size={18} />
-                                </div>
+                                <span className="download-icon">Download</span>
                               </div>
                             </a>
                           )}
                         </div>
                       )}
 
-                      {isDeleted ? (
-                        <div className="deleted-message-content">
-                          <AlertCircle size={16} />
-                          <span>Message supprimé</span>
+                      {msg.message && (
+                        <div className="message-text">
+                          {msg.message.split(' ').map((word, i) => 
+                            emojis.includes(word) ? <span key={i} className="emoji-in-message">{word}</span> : word + ' '
+                          )}
                         </div>
-                      ) : (
-                        msg.message && (
-                          <div className="message-text">
-                            {msg.message.split(' ').map((word, i) => 
-                              emojis.includes(word) ? (
-                                <span key={i} className="emoji-in-message">{word}</span>
-                              ) : (
-                                <span key={i}>{word} </span>
-                              )
-                            )}
-                          </div>
-                        )
                       )}
 
                       <div className="message-footer">
                         <span className="message-time" title={formatDateComplete(msg.created_at)}>
-                          <Clock size={12} />
                           {formatHeure(msg.created_at)}
                         </span>
-                        
-                        {msg.isSending && (
-                          <span className="message-status sending">
-                            <div className="sending-dots">
-                              <div className="dot"></div>
-                              <div className="dot"></div>
-                              <div className="dot"></div>
-                            </div>
-                          </span>
-                        )}
-                        
-                        {msg.hasError && (
-                          <span className="message-status error" title="Échec de l'envoi">
-                            <AlertCircle size={14} />
-                          </span>
-                        )}
-                        
-                        {!msg.isSending && !msg.hasError && isMine && (
-                          <span className="message-status sent">
-                            <CheckCircle size={14} />
-                          </span>
-                        )}
-                        
-                        {msg.file && !isDeleted && (
-                          <span className="file-indicator">
-                            <Paperclip size={12} />
-                          </span>
-                        )}
+                        {msg.isSending && <span className="sending-indicator">Envoi</span>}
+                        {msg.hasError && <span className="error-indicator">Échec</span>}
+                        {msg.file && <span className="file-indicator">Fichier</span>}
                       </div>
                     </div>
-
-                    {canDeleteMessage(msg) && !msg.isDeleting && (
-                      <button 
-                        onClick={() => supprimerMessage(msg.id)}
-                        className="delete-message-btn"
-                        title="Supprimer le message"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-
-                    {msg.isDeleting && (
-                      <div className="deleting-overlay">
-                        <div className="deleting-spinner"></div>
-                      </div>
-                    )}
                   </div>
 
                   {isMine && (
-                    <div className="avatar own-avatar" style={{ background: getAvatarColor(msg.username) }}>
+                    <div className="avatar own-avatar" style={{ backgroundColor: getAvatarColor(msg.username) }}>
                       {getInitials(msg.username)}
-                      {msg.type === 'admin' && (
-                        <div className="admin-badge-icon">
-                          <Shield size={10} />
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -592,25 +454,18 @@ const Chat = () => {
       {selectedFile && (
         <div className="file-preview">
           <div className="preview-header">
-            <span>Fichier sélectionné</span>
-            <button type="button" onClick={removeSelectedFile} className="remove-file-btn">
-              <X size={20} />
-            </button>
+            <span>Fichier sélectionné :</span>
+            <button type="button" onClick={removeSelectedFile} className="remove-file-btn">×</button>
           </div>
           <div className="preview-content">
             {filePreview ? (
               <div className="image-preview-small">
                 <img src={filePreview} alt="Aperçu" />
-                <div className="file-info">
-                  <span className="file-name">{selectedFile.name}</span>
-                  <span className="file-size">{formatFileSize(selectedFile.size)}</span>
-                </div>
+                <span>{selectedFile.name}</span>
               </div>
             ) : (
               <div className="document-preview-small">
-                <div className="file-icon-wrapper">
-                  <File size={24} />
-                </div>
+                <span className="file-icon">{getFileIcon('document')}</span>
                 <div className="file-info">
                   <span className="file-name">{selectedFile.name}</span>
                   <span className="file-size">{formatFileSize(selectedFile.size)}</span>
@@ -625,91 +480,39 @@ const Chat = () => {
       <form onSubmit={envoyerMessage} className="input-container">
         <div className="input-wrapper">
           <div className="input-actions">
-            <button 
-              type="button" 
-              onClick={() => fileInputRef.current?.click()} 
-              className="action-btn attach-file-btn"
-              disabled={isUploading}
-              title="Joindre un fichier"
-            >
-              <Paperclip size={20} />
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="attach-file-btn" disabled={isUploading}>
+              Attach
             </button>
-            
-            <button 
-              type="button" 
-              onClick={() => setShowEmojis(!showEmojis)} 
-              className="action-btn emoji-btn"
-              title="Émojis"
-            >
-              <Smile size={20} />
+            <button type="button" onClick={() => setShowEmojis(!showEmojis)} className="emoji-btn">
+              Emoji
             </button>
-            
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleFileSelect} 
-              accept="image/*,.pdf,.doc,.docx"
-              style={{ display: 'none' }} 
-            />
+            <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept="image/*,.pdf,.doc,.docx" style={{ display: 'none' }} />
           </div>
 
-          <div className="input-field-wrapper">
-            <input
-              ref={inputRef}
-              type="text"
-              placeholder={isOnline ? "Tapez votre message..." : "Hors ligne - Reconnexion..."}
-              value={nouveauMessage}
-              onChange={e => setNouveauMessage(e.target.value)}
-              className="message-input"
-              disabled={!isOnline || isUploading}
-              onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && envoyerMessage(e)}
-            />
-            
-            {nouveauMessage && (
-              <button 
-                type="button" 
-                onClick={() => setNouveauMessage('')} 
-                className="clear-input-btn"
-              >
-                <X size={16} />
-              </button>
-            )}
-          </div>
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Tapez votre message..."
+            value={nouveauMessage}
+            onChange={e => setNouveauMessage(e.target.value)}
+            className="message-input"
+            disabled={!isOnline || isUploading}
+          />
 
-          <button 
-            type="submit" 
-            className="send-button"
-            disabled={(!nouveauMessage.trim() && !selectedFile) || !isOnline || isUploading}
-          >
-            {isUploading ? (
-              <div className="uploading-indicator"></div>
-            ) : (
-              <>
-                <Send size={18} />
-                <span>Envoyer</span>
-              </>
-            )}
+          <button type="submit" className="send-button" disabled={(!nouveauMessage.trim() && !selectedFile) || !isOnline || isUploading}>
+            {isUploading ? <div className="uploading-indicator"></div> : <>Send Envoyer</>}
           </button>
         </div>
 
-        {/* Sélecteur d'émojis */}
         {showEmojis && (
           <div ref={emojiPickerRef} className="emoji-picker">
             <div className="emoji-picker-header">
-              <h4>Émojis</h4>
-              <button type="button" onClick={() => setShowEmojis(false)} className="close-emoji-btn">
-                <X size={20} />
-              </button>
+              <span>Choisissez un émoji</span>
+              <button type="button" onClick={() => setShowEmojis(false)} className="close-emoji-btn">×</button>
             </div>
             <div className="emoji-grid">
               {emojis.map((emoji, i) => (
-                <button 
-                  key={i} 
-                  type="button" 
-                  className="emoji-item" 
-                  onClick={() => addEmoji(emoji)}
-                  title={emoji}
-                >
+                <button key={i} type="button" className="emoji-item" onClick={() => addEmoji(emoji)}>
                   {emoji}
                 </button>
               ))}
@@ -717,64 +520,65 @@ const Chat = () => {
           </div>
         )}
 
-        {/* Infos bas de formulaire */}
         <div className="input-footer">
-          {!isOnline && (
-            <div className="offline-warning">
-              <WifiOff size={16} />
-              <span>Vous êtes hors ligne - Reconnexion automatique</span>
-            </div>
-          )}
-          
-          {isUploading && (
-            <div className="uploading-message">
-              <div className="uploading-spinner"></div>
-              <span>Envoi du fichier en cours...</span>
-            </div>
-          )}
-          
-          <div className="file-info-text">
-            <File size={12} />
-            <span>Formats acceptés : Images, PDF, Word (max 10MB)</span>
-          </div>
+          {!isOnline && <div className="offline-warning">Vous êtes hors ligne</div>}
+          {isUploading && <div className="uploading-message">Envoi en cours...</div>}
+          <div className="file-info-text">Formats : JPEG, PNG, GIF, WebP, PDF, Word (max 10MB)</div>
         </div>
       </form>
 
       <style jsx>{`
         .chat-container {
-          max-width: 1200px;
+          max-width: 1000px;
           margin: 2rem auto;
           background: white;
           border-radius: 24px;
-          box-shadow: 0 25px 70px rgba(0, 0, 0, 0.15);
+          box-shadow: 
+            0 20px 60px rgba(0,0,0,0.1),
+            0 8px 30px rgba(0,0,0,0.05);
           height: 85vh;
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          font-family: 'Inter', system-ui, sans-serif;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255,255,255,0.2);
           position: relative;
         }
 
-        /* En-tête amélioré */
+        .chat-container::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(30,60,114,0.1), transparent);
+        }
+
+        /* Header amélioré */
         .chat-header {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: linear-gradient(135deg, 
+            rgba(30,60,114,0.95) 0%, 
+            rgba(42,82,152,0.95) 100%);
           color: white;
-          padding: 1.5rem 2rem;
+          padding: 1.25rem 2rem;
           position: relative;
           overflow: hidden;
-          z-index: 10;
+          backdrop-filter: blur(10px);
+          border-bottom: 1px solid rgba(255,255,255,0.1);
         }
 
         .chat-header::before {
           content: '';
           position: absolute;
           top: 0;
+          left: 0;
           right: 0;
-          width: 200px;
-          height: 200px;
-          background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1));
-          border-radius: 50%;
-          transform: translate(30%, -30%);
+          bottom: 0;
+          background: 
+            radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%),
+            radial-gradient(circle at 80% 20%, rgba(255,255,255,0.05) 0%, transparent 50%);
         }
 
         .header-content {
@@ -791,39 +595,31 @@ const Chat = () => {
           gap: 1rem;
         }
 
-        .chat-icon-wrapper {
-          position: relative;
-        }
-
         .chat-icon {
+          font-size: 2rem;
+          background: rgba(255,255,255,0.15);
           width: 48px;
           height: 48px;
-          background: rgba(255, 255, 255, 0.2);
-          backdrop-filter: blur(10px);
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          border: 2px solid rgba(255, 255, 255, 0.3);
+          backdrop-filter: blur(5px);
+          border: 1px solid rgba(255,255,255,0.2);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+          transition: transform 0.3s ease;
         }
 
-        .online-indicator {
-          position: absolute;
-          bottom: 0;
-          right: 0;
-          width: 12px;
-          height: 12px;
-          background: #48c78e;
-          border-radius: 50%;
-          border: 2px solid white;
-          box-shadow: 0 0 10px rgba(72, 199, 142, 0.5);
+        .chat-icon:hover {
+          transform: scale(1.05);
         }
 
         .chat-info h1 {
           margin: 0;
-          font-size: 1.5rem;
+          font-size: 1.35rem;
           font-weight: 700;
-          background: linear-gradient(135deg, #fff, rgba(255, 255, 255, 0.9));
+          letter-spacing: -0.025em;
+          background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.9) 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -832,132 +628,102 @@ const Chat = () => {
         .chat-info p {
           margin: 0.25rem 0 0 0;
           opacity: 0.9;
-          font-size: 0.95rem;
+          font-size: 0.85rem;
+          font-weight: 400;
         }
 
-        .header-stats {
-          display: flex;
-          align-items: center;
-          gap: 1.5rem;
-        }
-
-        .stat-item {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          background: rgba(255, 255, 255, 0.1);
-          padding: 0.5rem 1rem;
-          border-radius: 12px;
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .stat-icon {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          opacity: 0.9;
-        }
-
-        .stat-info {
-          display: flex;
-          flex-direction: column;
-          gap: 0.1rem;
-        }
-
-        .stat-value {
-          font-weight: 700;
-          font-size: 1.1rem;
-        }
-
-        .stat-label {
-          font-size: 0.75rem;
-          opacity: 0.8;
-        }
-
+        /* Status Indicator amélioré */
         .status-indicator {
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          background: rgba(255, 255, 255, 0.2);
-          padding: 0.5rem 1rem;
-          border-radius: 20px;
+          background: rgba(255,255,255,0.15);
+          padding: 0.6rem 1rem;
+          border-radius: 16px;
           backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.3);
+          border: 1px solid rgba(255,255,255,0.2);
           transition: all 0.3s ease;
+          cursor: pointer;
         }
 
-        .status-indicator.online {
-          background: rgba(72, 199, 142, 0.2);
-          border-color: rgba(72, 199, 142, 0.3);
-        }
-
-        .status-indicator.offline {
-          background: rgba(231, 76, 60, 0.2);
-          border-color: rgba(231, 76, 60, 0.3);
+        .status-indicator:hover {
+          background: rgba(255,255,255,0.2);
+          transform: translateY(-1px);
         }
 
         .status-dot {
           width: 8px;
           height: 8px;
           border-radius: 50%;
-          transition: all 0.3s ease;
-          background: currentColor;
+          position: relative;
         }
 
-        .status-indicator.online .status-dot {
-          background: #48c78e;
-          box-shadow: 0 0 10px rgba(72, 199, 142, 0.5);
+        .status-dot.online {
+          background: #10b981;
+          box-shadow: 
+            0 0 0 2px rgba(16,185,129,0.2),
+            0 0 20px rgba(16,185,129,0.4);
+          animation: pulse 2s infinite;
         }
 
-        .status-indicator.offline .status-dot {
-          background: #e74c3c;
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.7; }
         }
 
-        /* Zone des messages */
+        .status-dot.offline {
+          background: #ef4444;
+          box-shadow: 0 0 10px rgba(239,68,68,0.3);
+        }
+
+        /* Messages Container amélioré */
         .messages-container {
           flex: 1;
-          padding: 1rem 2rem;
+          padding: 1.5rem 2rem;
           overflow-y: auto;
-          background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+          background: linear-gradient(135deg, 
+            #f8fafc 0%,
+            #f1f5f9 50%,
+            #e2e8f0 100%);
           display: flex;
           flex-direction: column;
           position: relative;
         }
 
         .messages-container::-webkit-scrollbar {
-          width: 8px;
+          width: 6px;
         }
 
         .messages-container::-webkit-scrollbar-track {
-          background: transparent;
+          background: rgba(0,0,0,0.05);
+          border-radius: 3px;
         }
 
         .messages-container::-webkit-scrollbar-thumb {
           background: linear-gradient(135deg, #cbd5e1, #94a3b8);
-          border-radius: 4px;
+          border-radius: 3px;
         }
 
         .messages-container::-webkit-scrollbar-thumb:hover {
           background: linear-gradient(135deg, #94a3b8, #64748b);
         }
 
-        /* Séparateur de date */
+        /* Date Separator amélioré */
         .date-separator {
           display: flex;
           align-items: center;
           justify-content: center;
           margin: 1.5rem 0;
           gap: 1rem;
-          position: sticky;
-          top: 0;
-          z-index: 5;
         }
 
         .separator-line {
           flex: 1;
           height: 1px;
-          background: linear-gradient(90deg, transparent, #cbd5e1, transparent);
+          background: linear-gradient(90deg, 
+            transparent, 
+            rgba(203,213,225,0.8), 
+            transparent);
         }
 
         .separator-text {
@@ -965,15 +731,21 @@ const Chat = () => {
           color: #64748b;
           font-weight: 600;
           padding: 0.5rem 1rem;
-          background: rgba(255, 255, 255, 0.9);
+          background: rgba(255,255,255,0.9);
           border-radius: 12px;
           backdrop-filter: blur(10px);
-          border: 1px solid #e2e8f0;
+          border: 1px solid rgba(226,232,240,0.6);
           white-space: nowrap;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+          transition: all 0.3s ease;
         }
 
-        /* États de chargement et vide */
+        .separator-text:hover {
+          background: white;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        /* Loading et Empty States améliorés */
         .loading-state, .empty-state {
           display: flex;
           flex-direction: column;
@@ -982,16 +754,36 @@ const Chat = () => {
           height: 100%;
           color: #64748b;
           text-align: center;
+          animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
 
         .loading-spinner {
           width: 40px;
           height: 40px;
-          border: 3px solid #e2e8f0;
-          border-top: 3px solid #667eea;
+          border: 3px solid rgba(226,232,240,0.8);
+          border-top: 3px solid #1e3c72;
           border-radius: 50%;
           animation: spin 1s linear infinite;
           margin-bottom: 1rem;
+          position: relative;
+        }
+
+        .loading-spinner::after {
+          content: '';
+          position: absolute;
+          top: -3px;
+          left: -3px;
+          right: -3px;
+          bottom: -3px;
+          border: 3px solid transparent;
+          border-top: 3px solid rgba(30,60,114,0.3);
+          border-radius: 50%;
+          animation: spin 1.5s linear infinite reverse;
         }
 
         @keyframes spin {
@@ -1000,33 +792,26 @@ const Chat = () => {
         }
 
         .empty-icon {
+          font-size: 3rem;
           margin-bottom: 1rem;
           opacity: 0.5;
+          filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
         }
 
         .empty-state h3 {
           margin: 0 0 0.5rem 0;
           color: #374151;
-          font-size: 1.5rem;
+          font-size: 1.25rem;
+          font-weight: 600;
         }
 
-        .empty-tips {
-          margin-top: 1rem;
-          padding: 1rem;
-          background: rgba(255, 255, 255, 0.8);
-          border-radius: 12px;
-          font-size: 0.9rem;
-          color: #64748b;
-        }
-
-        /* Messages */
+        /* Message Wrapper amélioré */
         .message-wrapper {
           display: flex;
           align-items: flex-end;
           gap: 0.75rem;
           margin-bottom: 1rem;
-          max-width: 70%;
-          position: relative;
+          max-width: 80%;
           animation: slideIn 0.3s ease;
         }
 
@@ -1050,47 +835,49 @@ const Chat = () => {
           margin-right: auto;
         }
 
-        /* Avatar */
+        /* Avatar amélioré */
         .avatar {
-          width: 40px;
-          height: 40px;
+          width: 36px;
+          height: 36px;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
           color: white;
           font-weight: 600;
-          font-size: 0.8rem;
+          font-size: 0.75rem;
           flex-shrink: 0;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          box-shadow: 
+            0 4px 12px rgba(0,0,0,0.15),
+            0 0 0 2px white;
+          transition: all 0.3s ease;
           position: relative;
-          transition: transform 0.3s ease;
+          overflow: hidden;
         }
 
-        .avatar:hover {
-          transform: scale(1.05);
+        .avatar::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: linear-gradient(135deg, 
+            rgba(255,255,255,0.2) 0%,
+            transparent 50%);
         }
 
         .own-avatar {
-          background: linear-gradient(135deg, #667eea, #764ba2) !important;
+          background: linear-gradient(135deg, 
+            #1e3c72 0%,
+            #2a5298 100%) !important;
         }
 
-        .admin-badge-icon {
-          position: absolute;
-          bottom: -2px;
-          right: -2px;
-          background: #e74c3c;
-          color: white;
-          border-radius: 50%;
-          width: 16px;
-          height: 16px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border: 2px solid white;
+        .avatar:hover {
+          transform: scale(1.05) rotate(5deg);
         }
 
-        /* Contenu du message */
+        /* Message Bubble amélioré */
         .message-content {
           flex: 1;
           min-width: 0;
@@ -1098,145 +885,127 @@ const Chat = () => {
         }
 
         .message-bubble {
-          padding: 1rem 1.25rem;
-          border-radius: 20px;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+          padding: 0.875rem 1.125rem;
+          border-radius: 18px;
           position: relative;
           word-wrap: break-word;
           transition: all 0.3s ease;
+          backdrop-filter: blur(10px);
+          border: 1px solid transparent;
         }
 
         .own-message .message-bubble {
-          background: linear-gradient(135deg, #667eea, #764ba2);
+          background: linear-gradient(135deg, 
+            #1e3c72 0%,
+            #2a5298 100%);
           color: white;
-          border-bottom-right-radius: 6px;
+          border-bottom-right-radius: 4px;
+          box-shadow: 
+            0 4px 20px rgba(30,60,114,0.2),
+            0 0 0 1px rgba(255,255,255,0.1) inset;
         }
 
         .other-message .message-bubble {
-          background: white;
+          background: rgba(255,255,255,0.95);
           color: #333;
-          border: 1px solid #e2e8f0;
-          border-bottom-left-radius: 6px;
+          border: 1px solid rgba(226,232,240,0.8);
+          border-bottom-left-radius: 4px;
+          box-shadow: 
+            0 2px 12px rgba(0,0,0,0.08),
+            0 0 0 1px rgba(255,255,255,0.5) inset;
         }
 
-        .deleted-message .message-bubble {
-          background: #f8fafc;
-          color: #94a3b8;
-          font-style: italic;
-          box-shadow: none;
-          border: 1px solid #e2e8f0;
-        }
-
-        /* En-tête du message */
+        /* Message Header amélioré */
         .message-header {
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          margin-bottom: 0.5rem;
+          margin-bottom: 0.375rem;
         }
 
         .username {
-          font-size: 0.9rem;
+          font-size: 0.85rem;
           opacity: 0.9;
           font-weight: 600;
+          letter-spacing: -0.01em;
         }
 
         .admin-badge {
-          background: linear-gradient(135deg, #e74c3c, #c0392b);
+          background: linear-gradient(135deg, 
+            #ef4444 0%,
+            #dc2626 100%);
           color: white;
-          padding: 0.2rem 0.6rem;
-          border-radius: 12px;
-          font-size: 0.7rem;
+          padding: 0.15rem 0.5rem;
+          border-radius: 10px;
+          font-size: 0.65rem;
           font-weight: 600;
-          display: flex;
-          align-items: center;
-          gap: 0.2rem;
+          backdrop-filter: blur(5px);
+          border: 1px solid rgba(255,255,255,0.2);
         }
 
-        /* Texte du message */
+        /* Message Text amélioré */
         .message-text {
           line-height: 1.5;
-          margin: 0.5rem 0;
-          font-size: 1rem;
+          margin: 0.375rem 0;
+          font-size: 0.95rem;
           word-break: break-word;
         }
 
         .emoji-in-message {
-          font-size: 1.2rem;
+          font-size: 1.1rem;
           display: inline-block;
-          margin: 0 2px;
+          margin: 0 1px;
           vertical-align: middle;
+          transition: transform 0.2s ease;
         }
 
-        .deleted-message-content {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          color: #94a3b8;
-          font-size: 0.9rem;
+        .emoji-in-message:hover {
+          transform: scale(1.2);
         }
 
-        /* Pied de message */
+        /* Message Footer amélioré */
         .message-footer {
           display: flex;
           align-items: center;
           justify-content: flex-end;
           gap: 0.5rem;
-          margin-top: 0.5rem;
-          font-size: 0.75rem;
-        }
-
-        .message-time {
-          display: flex;
-          align-items: center;
-          gap: 0.25rem;
-          opacity: 0.7;
-          cursor: help;
+          margin-top: 0.375rem;
+          opacity: 0.8;
           transition: opacity 0.3s ease;
         }
 
-        .message-time:hover {
+        .message-bubble:hover .message-footer {
           opacity: 1;
         }
 
-        .message-status {
-          display: flex;
-          align-items: center;
-          gap: 0.25rem;
+        .message-time {
+          font-size: 0.7rem;
+          cursor: help;
+          font-weight: 500;
         }
 
-        .message-status.sending .sending-dots {
-          display: flex;
-          gap: 2px;
+        .sending-indicator, .error-indicator, .file-indicator {
+          font-size: 0.75rem;
+          padding: 0.1rem 0.4rem;
+          border-radius: 8px;
+          font-weight: 500;
         }
 
-        .message-status.sending .dot {
-          width: 4px;
-          height: 4px;
-          background: currentColor;
-          border-radius: 50%;
-          animation: bounce 1.4s infinite ease-in-out;
+        .sending-indicator {
+          background: rgba(255,255,255,0.2);
+          color: rgba(255,255,255,0.9);
         }
 
-        .message-status.sending .dot:nth-child(1) { animation-delay: -0.32s; }
-        .message-status.sending .dot:nth-child(2) { animation-delay: -0.16s; }
-
-        @keyframes bounce {
-          0%, 80%, 100% { transform: scale(0); }
-          40% { transform: scale(1); }
+        .other-message .sending-indicator {
+          background: rgba(226,232,240,0.8);
+          color: #64748b;
         }
 
-        .message-status.error {
-          color: #e74c3c;
-        }
-
-        .message-status.sent {
-          color: #48c78e;
-        }
-
-        /* Fichiers joints */
+        /* File Attachment amélioré */
         .file-attachment {
-          margin-bottom: 0.75rem;
+          margin-bottom: 0.5rem;
+          border-radius: 12px;
+          overflow: hidden;
         }
 
         .image-preview {
@@ -1244,20 +1013,21 @@ const Chat = () => {
           border-radius: 12px;
           overflow: hidden;
           cursor: pointer;
-          max-width: 300px;
-          transition: all 0.3s ease;
+          max-width: 280px;
+          transition: all 0.4s ease;
+          border: 1px solid rgba(226,232,240,0.8);
         }
 
         .uploaded-image {
           width: 100%;
-          max-height: 250px;
+          max-height: 220px;
           object-fit: cover;
           display: block;
-          transition: transform 0.3s ease;
+          transition: transform 0.4s ease;
         }
 
         .image-preview:hover .uploaded-image {
-          transform: scale(1.02);
+          transform: scale(1.03);
         }
 
         .image-overlay {
@@ -1266,7 +1036,9 @@ const Chat = () => {
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(0, 0, 0, 0.7);
+          background: linear-gradient(135deg, 
+            rgba(30,60,114,0.9) 0%,
+            rgba(42,82,152,0.8) 100%);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1278,61 +1050,61 @@ const Chat = () => {
           opacity: 1;
         }
 
-        .overlay-content {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 0.5rem;
-          color: white;
-        }
-
         .view-text {
+          color: white;
           font-weight: 600;
           font-size: 0.9rem;
+          padding: 0.5rem 1rem;
+          background: rgba(255,255,255,0.2);
+          border-radius: 20px;
+          backdrop-filter: blur(5px);
+          border: 1px solid rgba(255,255,255,0.3);
         }
 
-        /* Documents */
+        /* Document Preview amélioré */
         .document-link {
           text-decoration: none;
           color: inherit;
+          display: block;
         }
 
         .document-preview {
           display: flex;
           align-items: center;
-          gap: 1rem;
-          padding: 1rem;
-          background: #f8fafc;
+          gap: 0.875rem;
+          padding: 0.875rem;
+          background: rgba(248,250,252,0.9);
           border-radius: 12px;
-          border: 1px solid #e2e8f0;
+          border: 1px solid rgba(226,232,240,0.8);
           transition: all 0.3s ease;
-          max-width: 300px;
+          max-width: 280px;
+          backdrop-filter: blur(5px);
         }
 
         .document-preview:hover {
-          background: #e2e8f0;
-          transform: translateY(-2px);
-          box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
-        }
-
-        .file-icon-wrapper {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 40px;
-          height: 40px;
           background: white;
-          border-radius: 8px;
-          border: 1px solid #e2e8f0;
+          transform: translateY(-2px);
+          box-shadow: 
+            0 8px 30px rgba(0,0,0,0.12),
+            0 0 0 1px rgba(30,60,114,0.1);
+          border-color: rgba(30,60,114,0.2);
         }
 
-        .download-icon-wrapper {
+        .file-icon {
+          font-size: 1.25rem;
+          color: #64748b;
+        }
+
+        .download-icon {
+          font-size: 1.1rem;
+          color: #64748b;
           opacity: 0.7;
-          transition: opacity 0.3s ease;
+          transition: all 0.3s ease;
         }
 
-        .document-preview:hover .download-icon-wrapper {
+        .document-preview:hover .download-icon {
           opacity: 1;
+          color: #1e3c72;
         }
 
         .file-info {
@@ -1356,77 +1128,55 @@ const Chat = () => {
           margin-top: 0.25rem;
         }
 
-        /* Bouton de suppression */
+        /* Delete Button amélioré */
         .delete-message-btn {
           position: absolute;
-          top: -8px;
-          right: -8px;
-          background: #ef4444;
+          top: -6px;
+          right: -6px;
+          background: linear-gradient(135deg, 
+            #ef4444 0%,
+            #dc2626 100%);
           color: white;
           border: none;
           border-radius: 50%;
-          width: 24px;
-          height: 24px;
+          width: 22px;
+          height: 22px;
           display: flex;
           align-items: center;
           justify-content: center;
+          font-size: 0.7rem;
           cursor: pointer;
           opacity: 0;
           transition: all 0.3s ease;
           z-index: 10;
-          box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
-        }
-
-        .message-wrapper:hover .delete-message-btn {
-          opacity: 1;
-          transform: scale(1.1);
+          box-shadow: 0 2px 8px rgba(239,68,68,0.3);
+          border: 1px solid rgba(255,255,255,0.3);
         }
 
         .delete-message-btn:hover {
-          background: #dc2626;
-          transform: scale(1.2);
+          opacity: 1 !important;
+          transform: scale(1.15);
+          box-shadow: 0 4px 12px rgba(239,68,68,0.4);
         }
 
-        .deleting-overlay {
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(255, 255, 255, 0.9);
-          border-radius: 20px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          backdrop-filter: blur(2px);
+        .message-wrapper:hover .delete-message-btn {
+          opacity: 0.8;
         }
 
-        .deleting-spinner {
-          width: 20px;
-          height: 20px;
-          border: 2px solid #e2e8f0;
-          border-top: 2px solid #667eea;
-          border-radius: 50%;
-          animation: spin 1s linear infinite;
-        }
-
-        /* Prévisualisation du fichier */
+        /* File Preview amélioré */
         .file-preview {
-          background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-          border-top: 1px solid #e2e8f0;
+          background: linear-gradient(135deg, 
+            rgba(248,250,252,0.95) 0%,
+            rgba(241,245,249,0.95) 100%);
+          border-top: 1px solid rgba(226,232,240,0.8);
           padding: 1rem 2rem;
+          backdrop-filter: blur(10px);
           animation: slideUp 0.3s ease;
         }
 
         @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          from { transform: translateY(10px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
 
         .preview-header {
@@ -1434,28 +1184,33 @@ const Chat = () => {
           justify-content: space-between;
           align-items: center;
           margin-bottom: 0.5rem;
-          font-size: 0.9rem;
+          font-size: 0.85rem;
           color: #64748b;
           font-weight: 500;
         }
 
         .remove-file-btn {
-          background: #ef4444;
+          background: linear-gradient(135deg, 
+            #ef4444 0%,
+            #dc2626 100%);
           color: white;
           border: none;
-          width: 28px;
-          height: 28px;
+          width: 24px;
+          height: 24px;
           border-radius: 50%;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
+          font-size: 1.2rem;
+          line-height: 1;
           transition: all 0.3s ease;
+          box-shadow: 0 2px 8px rgba(239,68,68,0.3);
         }
 
         .remove-file-btn:hover {
-          background: #dc2626;
-          transform: rotate(90deg);
+          transform: scale(1.1) rotate(90deg);
+          box-shadow: 0 4px 12px rgba(239,68,68,0.4);
         }
 
         .preview-content {
@@ -1476,7 +1231,7 @@ const Chat = () => {
           border-radius: 8px;
           object-fit: cover;
           border: 2px solid white;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
         .document-preview-small {
@@ -1487,15 +1242,16 @@ const Chat = () => {
           background: white;
           border-radius: 12px;
           border: 1px solid #e2e8f0;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
 
-        /* Zone de saisie */
+        /* Input Container amélioré */
         .input-container {
           position: relative;
-          padding: 1.5rem 2rem;
-          background: white;
-          border-top: 1px solid #e2e8f0;
+          padding: 1.25rem 2rem;
+          background: rgba(255,255,255,0.95);
+          border-top: 1px solid rgba(226,232,240,0.8);
+          backdrop-filter: blur(10px);
         }
 
         .input-wrapper {
@@ -1510,10 +1266,10 @@ const Chat = () => {
           gap: 0.5rem;
         }
 
-        .action-btn {
-          background: transparent;
+        .attach-file-btn, .emoji-btn {
+          background: rgba(241,245,249,0.8);
           border: none;
-          color: #64748b;
+          font-size: 1.25rem;
           cursor: pointer;
           padding: 0.5rem;
           border-radius: 50%;
@@ -1521,77 +1277,67 @@ const Chat = () => {
           display: flex;
           align-items: center;
           justify-content: center;
+          width: 40px;
+          height: 40px;
+          color: #64748b;
+          backdrop-filter: blur(5px);
+          border: 1px solid rgba(226,232,240,0.8);
         }
 
-        .action-btn:hover:not(:disabled) {
-          background: #f1f5f9;
-          color: #667eea;
-          transform: scale(1.1);
+        .attach-file-btn:hover:not(:disabled), .emoji-btn:hover:not(:disabled) {
+          background: white;
+          color: #1e3c72;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(30,60,114,0.1);
+          border-color: rgba(30,60,114,0.2);
         }
 
-        .action-btn:disabled {
+        .attach-file-btn:disabled, .emoji-btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
+          transform: none !important;
         }
 
-        .input-field-wrapper {
-          flex: 1;
-          position: relative;
-        }
-
+        /* Message Input amélioré */
         .message-input {
-          width: 100%;
-          padding: 1rem 3rem 1rem 1.5rem;
-          border: 2px solid #e2e8f0;
-          border-radius: 25px;
-          font-size: 1rem;
+          flex: 1;
+          padding: 0.875rem 1.25rem;
+          border: 2px solid rgba(226,232,240,0.8);
+          border-radius: 20px;
+          font-size: 0.95rem;
           transition: all 0.3s ease;
-          background: white;
+          background: rgba(255,255,255,0.9);
           resize: none;
-          min-height: 50px;
-          max-height: 120px;
+          min-height: 44px;
+          max-height: 100px;
           font-family: inherit;
+          backdrop-filter: blur(5px);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.05) inset;
         }
 
         .message-input:focus {
           outline: none;
-          border-color: #667eea;
-          box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+          border-color: #1e3c72;
+          box-shadow: 
+            0 0 0 4px rgba(30,60,114,0.1),
+            0 2px 8px rgba(0,0,0,0.05) inset;
+          background: white;
         }
 
         .message-input:disabled {
-          background: #f8fafc;
+          background: rgba(248,250,252,0.8);
           cursor: not-allowed;
         }
 
-        .clear-input-btn {
-          position: absolute;
-          right: 1rem;
-          top: 50%;
-          transform: translateY(-50%);
-          background: transparent;
-          border: none;
-          color: #94a3b8;
-          cursor: pointer;
-          padding: 0.25rem;
-          border-radius: 50%;
-          transition: all 0.3s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .clear-input-btn:hover {
-          background: #f1f5f9;
-          color: #64748b;
-        }
-
+        /* Send Button amélioré */
         .send-button {
-          padding: 1rem 1.5rem;
-          background: linear-gradient(135deg, #667eea, #764ba2);
+          padding: 0.875rem 1.5rem;
+          background: linear-gradient(135deg, 
+            #1e3c72 0%,
+            #2a5298 100%);
           color: white;
           border: none;
-          border-radius: 25px;
+          border-radius: 20px;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.3s ease;
@@ -1599,43 +1345,71 @@ const Chat = () => {
           align-items: center;
           gap: 0.5rem;
           white-space: nowrap;
-          box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+          box-shadow: 
+            0 4px 15px rgba(30,60,114,0.3),
+            0 0 0 1px rgba(255,255,255,0.1) inset;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .send-button::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: -100%;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(90deg, 
+            transparent, 
+            rgba(255,255,255,0.2), 
+            transparent);
+          transition: left 0.5s ease;
+        }
+
+        .send-button:hover:not(:disabled)::before {
+          left: 100%;
         }
 
         .send-button:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+          box-shadow: 
+            0 8px 25px rgba(30,60,114,0.4),
+            0 0 0 1px rgba(255,255,255,0.1) inset;
         }
 
         .send-button:disabled {
           opacity: 0.5;
           cursor: not-allowed;
-          transform: none;
+          transform: none !important;
           box-shadow: none;
         }
 
         .uploading-indicator {
-          width: 20px;
-          height: 20px;
+          width: 18px;
+          height: 18px;
           border: 2px solid transparent;
           border-top: 2px solid white;
           border-radius: 50%;
           animation: spin 1s linear infinite;
         }
 
-        /* Sélecteur d'émojis */
+        /* Emoji Picker amélioré */
         .emoji-picker {
           position: absolute;
-          bottom: calc(100% + 1rem);
-          left: 1rem;
-          background: white;
-          border: 1px solid #e2e8f0;
+          bottom: 100%;
+          left: 0;
+          background: rgba(255,255,255,0.95);
+          border: 1px solid rgba(226,232,240,0.8);
           border-radius: 16px;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-          max-height: 300px;
+          box-shadow: 
+            0 20px 60px rgba(0,0,0,0.15),
+            0 0 0 1px rgba(0,0,0,0.05);
+          max-height: 280px;
           overflow-y: auto;
           z-index: 1000;
-          width: 350px;
+          margin-bottom: 0.75rem;
+          width: 320px;
+          backdrop-filter: blur(20px);
           animation: fadeInUp 0.3s ease;
         }
 
@@ -1654,65 +1428,74 @@ const Chat = () => {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 1rem 1.5rem;
-          border-bottom: 1px solid #e2e8f0;
-          background: #f8fafc;
+          padding: 1rem 1.25rem;
+          border-bottom: 1px solid rgba(226,232,240,0.8);
+          background: rgba(248,250,252,0.9);
           border-radius: 16px 16px 0 0;
           position: sticky;
           top: 0;
+          backdrop-filter: blur(10px);
         }
 
-        .emoji-picker-header h4 {
-          margin: 0;
-          color: #1e3c72;
-          font-size: 0.9rem;
+        .emoji-picker-header span {
           font-weight: 600;
+          color: #1e3c72;
+          font-size: 0.85rem;
         }
 
         .close-emoji-btn {
-          background: #ef4444;
+          background: linear-gradient(135deg, 
+            #ef4444 0%,
+            #dc2626 100%);
           color: white;
           border: none;
-          width: 28px;
-          height: 28px;
+          width: 24px;
+          height: 24px;
           border-radius: 50%;
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
+          font-size: 1.2rem;
+          line-height: 1;
           transition: all 0.3s ease;
+          box-shadow: 0 2px 8px rgba(239,68,68,0.3);
         }
 
         .close-emoji-btn:hover {
-          background: #dc2626;
-          transform: rotate(90deg);
+          transform: scale(1.1) rotate(90deg);
+          box-shadow: 0 4px 12px rgba(239,68,68,0.4);
         }
 
         .emoji-grid {
           display: grid;
           grid-template-columns: repeat(8, 1fr);
-          gap: 0.5rem;
+          gap: 0.375rem;
           padding: 1rem;
-          max-height: 250px;
+          max-height: 220px;
           overflow-y: auto;
         }
 
         .emoji-item {
-          background: transparent;
+          background: rgba(241,245,249,0.8);
           border: none;
-          font-size: 1.5rem;
+          font-size: 1.35rem;
           cursor: pointer;
-          padding: 0.5rem;
+          padding: 0.375rem;
           border-radius: 8px;
           transition: all 0.2s ease;
           display: flex;
           align-items: center;
           justify-content: center;
+          backdrop-filter: blur(5px);
+          border: 1px solid transparent;
         }
 
         .emoji-item:hover {
-          background: #f1f5f9;
-          transform: scale(1.2);
+          background: white;
+          transform: scale(1.15);
+          border-color: rgba(30,60,114,0.2);
+          box-shadow: 0 4px 12px rgba(30,60,114,0.1);
         }
 
         .emoji-grid::-webkit-scrollbar {
@@ -1720,20 +1503,20 @@ const Chat = () => {
         }
 
         .emoji-grid::-webkit-scrollbar-track {
-          background: #f1f5f9;
+          background: rgba(241,245,249,0.8);
           border-radius: 3px;
         }
 
         .emoji-grid::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
+          background: linear-gradient(135deg, #cbd5e1, #94a3b8);
           border-radius: 3px;
         }
 
         .emoji-grid::-webkit-scrollbar-thumb:hover {
-          background: #94a3b8;
+          background: linear-gradient(135deg, #94a3b8, #64748b);
         }
 
-        /* Pied de formulaire */
+        /* Input Footer amélioré */
         .input-footer {
           margin-top: 0.75rem;
           display: flex;
@@ -1742,54 +1525,48 @@ const Chat = () => {
         }
 
         .offline-warning {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          background: #fef3c7;
+          background: linear-gradient(135deg, 
+            rgba(254,243,199,0.9) 0%,
+            rgba(252,211,77,0.8) 100%);
           color: #92400e;
-          padding: 0.75rem 1rem;
+          padding: 0.625rem 1rem;
           border-radius: 12px;
-          font-size: 0.9rem;
-          border: 1px solid #fcd34d;
+          font-size: 0.85rem;
+          text-align: center;
+          border: 1px solid rgba(252,211,77,0.5);
+          backdrop-filter: blur(5px);
+          animation: pulse 2s infinite;
         }
 
         .uploading-message {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
           color: #f39c12;
-          font-size: 0.9rem;
-          padding: 0.75rem 1rem;
-          background: #fef9c3;
+          font-size: 0.85rem;
+          text-align: center;
+          padding: 0.5rem;
+          background: rgba(254,249,195,0.9);
           border-radius: 12px;
-          border: 1px solid #fde047;
-        }
-
-        .uploading-spinner {
-          width: 16px;
-          height: 16px;
-          border: 2px solid transparent;
-          border-top: 2px solid #f39c12;
-          border-radius: 50%;
-          animation: spin 1s linear infinite;
+          border: 1px solid rgba(253,224,71,0.5);
         }
 
         .file-info-text {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          font-size: 0.8rem;
+          font-size: 0.75rem;
           color: #94a3b8;
-          justify-content: center;
+          text-align: center;
+          opacity: 0.8;
+          transition: opacity 0.3s ease;
         }
 
-        /* Responsive */
+        .file-info-text:hover {
+          opacity: 1;
+        }
+
+        /* Responsive amélioré */
         @media (max-width: 768px) {
           .chat-container {
             margin: 0;
             height: 100vh;
             border-radius: 0;
-            max-width: 100%;
+            border: none;
           }
 
           .chat-header {
@@ -1798,21 +1575,20 @@ const Chat = () => {
 
           .header-content {
             flex-direction: column;
-            gap: 1rem;
+            gap: 0.875rem;
             align-items: flex-start;
           }
 
-          .header-stats {
-            width: 100%;
-            justify-content: space-between;
+          .status-indicator {
+            align-self: flex-end;
           }
 
           .messages-container {
-            padding: 0.75rem 1.25rem;
+            padding: 1rem 1.25rem;
           }
 
           .message-wrapper {
-            max-width: 85%;
+            max-width: 90%;
           }
 
           .date-separator {
@@ -1820,8 +1596,8 @@ const Chat = () => {
           }
 
           .separator-text {
-            font-size: 0.7rem;
-            padding: 0.4rem 0.8rem;
+            font-size: 0.75rem;
+            padding: 0.375rem 0.75rem;
           }
 
           .input-container {
@@ -1830,7 +1606,7 @@ const Chat = () => {
 
           .input-wrapper {
             flex-direction: column;
-            gap: 1rem;
+            gap: 0.875rem;
           }
 
           .send-button {
@@ -1847,19 +1623,21 @@ const Chat = () => {
           .emoji-grid {
             grid-template-columns: repeat(6, 1fr);
           }
-
-          .file-preview {
-            padding: 1rem 1.25rem;
-          }
         }
 
         @media (max-width: 480px) {
-          .messages-container {
-            padding: 0.5rem 1rem;
+          .chat-icon {
+            width: 40px;
+            height: 40px;
+            font-size: 1.5rem;
           }
 
-          .message-wrapper {
-            max-width: 90%;
+          .chat-info h1 {
+            font-size: 1.1rem;
+          }
+
+          .chat-info p {
+            font-size: 0.8rem;
           }
 
           .avatar {
@@ -1870,22 +1648,21 @@ const Chat = () => {
 
           .message-bubble {
             padding: 0.75rem 1rem;
-            border-radius: 16px;
           }
 
           .emoji-grid {
             grid-template-columns: repeat(5, 1fr);
           }
 
-          .header-stats {
-            flex-direction: column;
-            gap: 0.5rem;
-            align-items: flex-start;
+          .attach-file-btn, .emoji-btn {
+            width: 36px;
+            height: 36px;
+            font-size: 1.1rem;
           }
 
-          .stat-item, .status-indicator {
-            width: 100%;
-            justify-content: space-between;
+          .message-input {
+            padding: 0.75rem 1rem;
+            font-size: 0.9rem;
           }
         }
       `}</style>

@@ -30,7 +30,7 @@ const EspaceAdmin = () => {
     try {
       setLoading(true);
       const response = await adminService.getInscriptions(filters);
-      setInscriptions(response.data);
+      setInscriptions(response.data || []);
     } catch (error) {
       toast.error('Erreur chargement inscriptions');
     } finally {

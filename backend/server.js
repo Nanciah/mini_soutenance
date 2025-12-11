@@ -13,7 +13,7 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
-// ==================== CONFIGURATION ====================
+// ==================== CONFIG ====================
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
@@ -44,10 +44,14 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// ==================== STOCKAGE TEMPORAIRE (INSCRIPTIONS + CHAT) ====================
+let inscriptions = [];        // Toutes les inscriptions
+let messagesChat = [];        // Tous les messages du chat
+
 // ==================== ROUTES ====================
 
 // Test
-app.get('/api/test', (req, res) => res.json({ message: "Backend en ligne !" }));
+app.get('/api/test', (req, res) => res.json({ message: "Backend en ligne !", date: new Date() }));
 
 // Login admin
 app.post('/api/admin/login', (req, res) => {
@@ -79,20 +83,68 @@ app.post('/api/etablissements', authenticateToken, (req, res) => {
   res.json({ login, password: 'sisco2024' });
 });
 
-// Données de test
-app.get('/api/admin/inscriptions', (req, res) => res.json({ data: [] }));
-app.get('/api/admin/stats', (req, res) => res.json({ inscriptions: { total: 0, en_attente: 0, accepte: 0, refuse: 0 } }));
-app.get('/api/etablissement/inscriptions', (req, res) => res.json([]));
-app.get('/api/examens', (req, res) => res.json([
-  { id: 1, nom: "CEPE 2025", date_examen: "2025-06-05", actif: 1 },
-  { id: 2, nom: "BEPC 2025", date_examen: "2025-06-15", actif: 1 },
-  { id: 3, nom: "BAC 2025",  date_examen: "2025-06-25", actif: 1 }
-]));
-app.post('/api/inscriptions', upload.array('files'), (req, res) => res.json({ success: true }));
+// ==================== INSCRIPTIONS (ENFIN VISIBLE !) ====================
+
+// Inscrire des élèves
+app.post('/api/inscriptions', upload.array('files'), (req, res) => {
+  const { examen_id, eleves } = req.body;
+
+  if (!eleves || !Array.isArray(eleves) || eleves.length === 0) {
+    return res.status(400).json({ error: 'Aucun élève envoyé' });
+  }
+
+  eleves.forEach(eleve => {
+    const nouvelle = {
+      id: Date.now() + Math.floor(Math.random() * 10000),
+      eleve_nom: eleve.nom || '',
+      eleve_prenom: eleve.prenom || '',
+      date_naissance: eleve.date_naissance || '',
+      examen_id: parseInt(examen_id) || 1,
+      examen_nom: examen_id == 1 ? "CEPE 2025" : examen_id == 2 ? "BEPC 2025" : "BAC 2025",
+      etablissement_nom: "Établissement Test",
+      statut: "en_attente",
+      salle_examen: "",
+      centre_examen: "",
+      date_inscription: new Date().toISOString()
+    };
+    inscriptions.push(nouvelle);
+  });
+
+  res.json({ success: true, message: `${eleves.length} élève(s) inscrit(s) avec succès !` });
+});
+
+// Liste admin
+app.get('/api/admin/inscriptions', (req, res) => {
+  res.json({ data: inscriptions });
+});
+
+// Liste établissement
+app.get('/api/etablissement/inscriptions', (req, res) => {
+  res.json(inscriptions);
+});
+
+// Stats admin
+app.get('/api/admin/stats', (req, res) => {
+  const total = inscriptions.length;
+  const en_attente = inscriptions.filter(i => i.statut === 'en_attente').length;
+  const accepte = inscriptions.filter(i => i.statut === 'accepte').length;
+  const refuse = inscriptions.filter(i => i.statut === 'refuse').length;
+
+  res.json({
+    inscriptions: { total, en_attente, accepte, refuse }
+  });
+});
+
+// Examens
+app.get('/api/examens', (req, res) => {
+  res.json([
+    { id: 1, nom: "CEPE 2025", date_examen: "2025-06-05", actif: 1 },
+    { id: 2, nom: "BEPC 2025", date_examen: "2025-06-15", actif: 1 },
+    { id: 3, nom: "BAC 2025",  date_examen: "2025-06-25", actif: 1 }
+  ]);
+});
 
 // ==================== CHAT EN TEMPS RÉEL ====================
-let messagesChat = [];
-
 app.get('/api/chat', (req, res) => res.json(messagesChat));
 
 app.post('/api/chat/upload', upload.single('file'), (req, res) => {
@@ -121,7 +173,7 @@ app.post('/api/chat/with-file', (req, res) => {
   res.json({ success: true });
 });
 
-// Socket.io connexion
+// Socket.io
 io.on('connection', (socket) => {
   console.log('Utilisateur connecté au chat');
   socket.on('disconnect', () => console.log('Utilisateur déconnecté'));

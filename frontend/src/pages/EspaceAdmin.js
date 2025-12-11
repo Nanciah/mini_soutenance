@@ -512,7 +512,7 @@ useEffect(() => {
                 </tr>
               </thead>
               <tbody>
-                {inscriptions.map(inscription => (
+                {(Array.isArray(inscriptions) ? inscriptions : []).map(inscription => (
                   <tr key={inscription.id}>
                     <td>
                       <div className="student-info">

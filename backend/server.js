@@ -82,13 +82,25 @@ app.post('/api/etablissements/login', async (req, res) => {
 });
 
 // Création établissement (admin)
+// Middleware d'authentification (à mettre juste après les imports)
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return res.sendStatus(401);
+
+  jwt.verify(token, process.env.JWT_SECRET || 'sisco_super_secret_2024', (err, user) => {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
+  });
+};
+
+// Création établissement (admin)
 app.post('/api/etablissements', authenticateToken, async (req, res) => {
   if (req.user.type !== 'admin') return res.sendStatus(403);
-  // Simulation création (tu pourras remettre ton vrai code plus tard)
   const login = `etab_${req.body.code}`;
   res.json({ login, password: 'sisco2024' });
 });
-
 // AUTRES ROUTES NÉCESSAIRES (pour éviter les erreurs frontend crash)
 app.get('/api/admin/inscriptions', (req, res) => {
   res.json({ data: [] });

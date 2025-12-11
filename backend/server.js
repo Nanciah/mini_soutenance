@@ -118,6 +118,19 @@ app.post('/api/inscriptions', upload.array('files'), (req, res) => {
   res.json({ success: true, message: "Inscription enregistrée (simulation)" });
 });
 
+// CHAT – Historique des messages
+app.get('/api/chat', (req, res) => {
+  res.json([
+    { id: 1, userId: 1, username: "Administrateur", message: "Bienvenue dans le chat général !", type: "admin", created_at: new Date().toISOString() },
+    { id: 2, userId: 999, username: "ÉCOLE PRIVEE SAROBIDY", message: "Bonjour admin, nous avons une question", type: "etablissement", created_at: new Date().toISOString() }
+  ]);
+});
+
+// CHAT – Envoi message + fichier (simulation)
+app.post('/api/chat/with-file', (req, res) => {
+  res.json({ success: true });
+});
+
 // Route 404 gentille
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route non trouvée' });

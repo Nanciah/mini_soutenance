@@ -38,12 +38,13 @@ const EspaceAdmin = () => {
     }
   }, [filters]);
 
-  const chargerStats = async () => {
+    const chargerStats = async () => {
     try {
       const response = await adminService.getStats();
-      setStats(response.data);
+      setStats(response.data || { total: 0, accepte: 0, refuse: 0, en_attente: 0 });
     } catch (error) {
       console.error('Erreur stats:', error);
+      setStats({ total: 0, accepte: 0, refuse: 0, en_attente: 0 });
     }
   };
 

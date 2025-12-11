@@ -114,6 +114,7 @@ app.post('/api/inscriptions', upload.array('files'), (req, res) => {
 });
 
 // Liste admin
+// ADMIN – Liste des inscriptions (format attendu par le frontend)
 app.get('/api/admin/inscriptions', (req, res) => {
   res.json({ data: inscriptions });
 });

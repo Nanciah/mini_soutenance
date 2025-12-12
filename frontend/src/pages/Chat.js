@@ -283,14 +283,15 @@ const Chat = () => {
 
   // Fonctions utilitaires
   const getAvatarColor = useCallback((username) => {
-    const colors = [
-      '#1e3c72', '#2a5298', '#6a11cb', '#2575fc', 
-      '#ff6b6b', '#48c78e', '#f39c12', '#9b59b6',
-      '#2ecc71', '#3498db', '#9b59b6', '#34495e'
-    ];
-    const hash = username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return colors[hash % colors.length];
-  }, []);
+  const name = username || 'Utilisateur';
+  const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const colors = [
+    '#1e3c72', '#2a5298', '#6a11cb', '#2575fc',
+    '#ff6b6b', '#48c78e', '#f39c12', '#9b59b6',
+    '#2ecc71', '#3498db', '#9b59b6', '#34495e'
+  ];
+  return colors[hash % colors.length];
+}, []);
 
   
   const formatFileSize = useCallback((bytes) => {

@@ -292,15 +292,7 @@ const Chat = () => {
     return colors[hash % colors.length];
   }, []);
 
-  const getInitials = useCallback((username) => {
-    return username
-      .split(' ')
-      .map(word => word[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
-  }, []);
-
+  
   const formatFileSize = useCallback((bytes) => {
     if (!bytes) return '';
     const units = ['B', 'KB', 'MB', 'GB'];
@@ -582,7 +574,7 @@ const Chat = () => {
             {/* En-tête pour messages des autres */}
             {!isMine && !isDeleted && (
               <div className="message-header">
-                <strong className="username">{msg.username}</strong>
+                <strong className="username">{msg.username || 'Utilisateur'}</strong>
                 {msg.type === 'admin' && (
                   <span className="badge admin-badge">Admin</span>
                 )}

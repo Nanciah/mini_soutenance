@@ -469,10 +469,15 @@ const tempMessage = {
 
       if (!response.ok) throw new Error('Erreur d\'envoi');
       
-      const sentMessage = await response.json();
-      setMessages(prev => prev.map(msg => 
-        msg.tempId === tempId ? { ...sentMessage, isSending: false } : msg
-      ));
+     const sentMessage = await response.json();
+const finalMessage = {
+  ...sentMessage,
+  username: user.type === 'admin' ? 'Administrateur' : (user.nom || 'Utilisateur'),
+  type: user.type
+};
+setMessages(prev => prev.map(msg =>
+  msg.tempId === tempId ? { ...finalMessage, isSending: false } : msg
+));
       
       toast.success('Message envoyé');
     } catch (error) {

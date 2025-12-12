@@ -1,140 +1,349 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import io from 'socket.io-client';
-import { toast } from 'react-toastify';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import { 
+  Send, 
+  Image, 
+  FileText, 
+  Download, 
+  Trash2, 
+  Smile, 
+  Paperclip, 
+  Check, 
+  X, 
+  AlertCircle,
+  Clock,
+  Wifi,
+  WifiOff,
+  Users,
+  MoreVertical,
+  Eye
+} from 'lucide-react';
 
+// Configuration
 const API_URL = process.env.REACT_APP_API_URL || 'https://mini-soutenance.onrender.com/api';
-const socket = io(API_URL.replace('/api', '')); // socket.io sur le bon domaine
+const SOCKET_URL = API_URL.replace('/api', '');
+const socket = io(SOCKET_URL, {
+  transports: ['websocket', 'polling'],
+  reconnection: true,
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000,
+});
+
+// Constantes
+const ALLOWED_FILE_TYPES = {
+  image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+  document: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  maxSize: 10 * 1024 * 1024 // 10MB
+};
+
+const EMOJI_CATEGORIES = [
+  { 
+    name: 'Visages', 
+    emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚'] 
+  },
+  { 
+    name: 'Animaux', 
+    emojis: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵'] 
+  },
+  { 
+    name: 'Nourriture', 
+    emojis: ['🍎', '🍕', '🍔', '🍟', '🌭', '🍿', '🧁', '🎂', '🍦', '🍩', '🍪', '☕', '🍵', '🥤', '🍺'] 
+  },
+  { 
+    name: 'Activités', 
+    emojis: ['⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🎱', '🪀', '🏓', '🎮', '🎯', '🎨', '🎭', '🎤'] 
+  },
+  { 
+    name: 'Objets', 
+    emojis: ['📱', '💻', '🖥️', '⌚', '📷', '🎥', '📺', '📻', '💡', '🔦', '💰', '💎', '✉️', '📦', '🎁'] 
+  },
+  { 
+    name: 'Symboles', 
+    emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '👍', '👎', '👏', '🙌', '🤝'] 
+  }
+];
 
 const Chat = () => {
+  // États
   const [messages, setMessages] = useState([]);
-  const [nouveauMessage, setNouveauMessage] = useState('');
+  const [newMessage, setNewMessage] = useState('');
   const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePreview, setFilePreview] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [showEmojis, setShowEmojis] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
+  const [activeEmojiCategory, setActiveEmojiCategory] = useState(0);
+  const [typingUsers, setTypingUsers] = useState(new Set());
+  const [isTyping, setIsTyping] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState(0);
+
+  // Références
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const emojiPickerRef = useRef(null);
+  const optionsRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
-  const ALLOWED_FILE_TYPES = {
-    image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-    document: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-    maxSize: 10 * 1024 * 1024
-  };
-
-  const emojis = [
-    '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇',
-    '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚',
-    '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩',
-    '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣',
-    '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬',
-    '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗',
-    '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯',
-    '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐',
-    '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔',
-    '👍', '👎', '👏', '🙌', '🤝', '🙏', '✌️', '🤞', '🤟', '🤘',
-    '👊', '✊', '🤛', '🤜', '💪', '👀', '👁️', '🧠', '👅', '👄',
-    '🎉', '🎊', '🎁', '🎂', '🎈', '🎀', '🏆', '🥇', '🥈', '🥉',
-    '⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🎱', '🪀', '🏓',
-    '🍕', '🍔', '🍟', '🌭', '🍿', '🧁', '🎂', '🍦', '🍩', '🍪',
-    '☕', '🍵', '🥤', '🍺', '🍷', '🥂', '🍾', '🧃', '🧉', '🧊',
-    '🚗', '🚙', '🚕', '🚌', '🏎️', '🚓', '🚑', '🚒', '✈️', '🚀',
-    '🛸', '🚁', '⛵', '🚤', '🛳️', '🎠', '🎡', '🎢', '🚂', '🚊',
-    '🌍', '🌎', '🌏', '🗺️', '🏔️', '⛰️', '🌋', '🏕️', '🏖️', '🏜️',
-    '🏝️', '📱', '💻', '🖥️', '⌚', '📷', '📹', '🎥', '📺', '📻',
-    '💾', '📀', '📼', '📸', '🔍', '💡', '🔦', '🕯️', '💰', '💎',
-    '🛒', '🎁', '📦', '✉️', '📨', '📩', '📤', '📥', '📆', '📅',
-    '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙'
-  ];
-
-// FONCTIONS DÉPLACÉES AU BON ENDROIT
-  const handleNouveauMessage = (msg) => {
-    setMessages(prev => [...prev, msg]);
-    if (msg.userId !== user?.id && !document.hidden) {
-      const notification = msg.file ? `Fichier ${msg.username} a envoyé un fichier` : `Nouveau message de ${msg.username}`;
-      toast.info(notification);
-    }
-  };
-
-  const handleMessageSupprime = (msgMisAJour) => {
-    setMessages(prev => prev.map(m =>
-      m.id === msgMisAJour.id ? { ...m, message: msgMisAJour.message, file: null } : m
-    ));
-  };
-
-  const supprimerMessage = async (messageId) => {
-    if (!window.confirm('Supprimer ce message ? Cette action est irréversible.')) return;
-
-    try {
-      setMessages(prev => prev.map(m =>
-        m.id === messageId ? { ...m, message: 'Suppression...', isSending: true } : m
-      ));
-
-      const response = await fetch(`${API_URL}/chat/${messageId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-
-      if (!response.ok) throw new Error();
-      toast.success('Message supprimé !');
-    } catch (error) {
-      toast.error('Erreur lors de la suppression');
-    }
-  };
-
+  // Chargement initial
   useEffect(() => {
-    const userData = JSON.parse(localStorage.getItem('user') || '{}');
-    setUser(userData);
-
-    const chargerHistorique = async () => {
-      setIsLoading(true);
+    const loadUserData = () => {
       try {
-        const res = await fetch(`${API_URL}/chat`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        const userData = JSON.parse(localStorage.getItem('user') || '{}');
+        setUser(userData);
+        return userData;
+      } catch (error) {
+        console.error('Erreur de chargement utilisateur:', error);
+        return null;
+      }
+    };
+
+    const loadChatHistory = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          toast.error('Session expirée. Veuillez vous reconnecter.');
+          return;
+        }
+
+        const response = await fetch(`${API_URL}/chat`, {
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
         });
-        const data = await res.json();
+
+        if (!response.ok) throw new Error('Erreur de chargement');
+        
+        const data = await response.json();
         setMessages(Array.isArray(data) ? data : []);
       } catch (error) {
-        toast.error('Erreur lors du chargement des messages');
+        console.error('Erreur:', error);
+        toast.error('Impossible de charger les messages');
       } finally {
         setIsLoading(false);
       }
     };
 
-    chargerHistorique();
+    const userData = loadUserData();
+    if (userData?.id) {
+      loadChatHistory();
+    }
 
-    socket.on('nouveau-message', handleNouveauMessage);
-    socket.on('message-supprime', handleMessageSupprime);
-    socket.on('connect', () => setIsOnline(true));
-    socket.on('disconnect', () => setIsOnline(false));
+    // Gestionnaire de connexion réseau
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
     return () => {
-      socket.off('nouveau-message', handleNouveauMessage);
-      socket.off('message-supprime', handleMessageSupprime);
-      socket.off('connect');
-      socket.off('disconnect');
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
+  // Socket.IO
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const handleNewMessage = (msg) => {
+      setMessages(prev => {
+        // Éviter les doublons
+        if (prev.some(m => m.id === msg.id || m.tempId === msg.tempId)) {
+          return prev.map(m => m.tempId === msg.tempId ? msg : m);
+        }
+        return [...prev, msg];
+      });
 
+      // Notification si pas dans le chat
+      if (msg.userId !== user?.id && document.hidden) {
+        const notification = msg.file 
+          ? `${msg.username} a envoyé un fichier`
+          : `Nouveau message de ${msg.username}`;
+        
+        toast.info(notification, {
+          onClick: () => window.focus()
+        });
+      }
+    };
+
+    const handleDeletedMessage = (deletedMsg) => {
+      setMessages(prev => prev.map(m => 
+        m.id === deletedMsg.id 
+          ? { ...m, message: '[Message supprimé]', file: null, isDeleted: true }
+          : m
+      ));
+    };
+
+    const handleUserTyping = ({ userId, username, isTyping }) => {
+      setTypingUsers(prev => {
+        const newSet = new Set(prev);
+        if (isTyping) {
+          newSet.add(username);
+        } else {
+          newSet.delete(username);
+        }
+        return newSet;
+      });
+    };
+
+    const handleOnlineUsers = (count) => {
+      setOnlineUsers(count);
+    };
+
+    // Événements Socket.IO
+    socket.on('connect', () => {
+      setIsOnline(true);
+      console.log('Socket connecté');
+    });
+
+    socket.on('disconnect', () => {
+      setIsOnline(false);
+      console.log('Socket déconnecté');
+    });
+
+    socket.on('nouveau-message', handleNewMessage);
+    socket.on('message-supprime', handleDeletedMessage);
+    socket.on('user-typing', handleUserTyping);
+    socket.on('online-users', handleOnlineUsers);
+    socket.on('reconnect', () => {
+      toast.success('Reconnecté au chat');
+      setIsOnline(true);
+    });
+
+    // Rejoindre le chat
+    if (user?.id) {
+      socket.emit('join-chat', { userId: user.id, username: user.nom || 'Utilisateur' });
+    }
+
+    return () => {
+      socket.off('nouveau-message', handleNewMessage);
+      socket.off('message-supprime', handleDeletedMessage);
+      socket.off('user-typing', handleUserTyping);
+      socket.off('online-users', handleOnlineUsers);
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('reconnect');
+    };
+  }, [user]);
+
+  // Scroll automatique
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ 
+      behavior: 'smooth',
+      block: 'end'
+    });
+  }, [messages, typingUsers.size]);
+
+  // Click outside handlers
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target)) {
         setShowEmojis(false);
       }
+      if (optionsRef.current && !optionsRef.current.contains(event.target)) {
+        setShowOptions(false);
+      }
     };
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleFileSelect = (event) => {
+  // Gestionnaire de saisie avec debounce
+  const handleTyping = useCallback(() => {
+    if (!user?.id || !isTyping) {
+      socket.emit('typing', { 
+        userId: user.id, 
+        username: user.nom || 'Utilisateur', 
+        isTyping: true 
+      });
+      setIsTyping(true);
+    }
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      if (user?.id) {
+        socket.emit('typing', { 
+          userId: user.id, 
+          username: user.nom || 'Utilisateur', 
+          isTyping: false 
+        });
+        setIsTyping(false);
+      }
+    }, 1000);
+  }, [user, isTyping]);
+
+  // Fonctions utilitaires
+  const getAvatarColor = useCallback((username) => {
+    const colors = [
+      '#1e3c72', '#2a5298', '#6a11cb', '#2575fc', 
+      '#ff6b6b', '#48c78e', '#f39c12', '#9b59b6',
+      '#2ecc71', '#3498db', '#9b59b6', '#34495e'
+    ];
+    const hash = username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return colors[hash % colors.length];
+  }, []);
+
+  const getInitials = useCallback((username) => {
+    return username
+      .split(' ')
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  }, []);
+
+  const formatFileSize = useCallback((bytes) => {
+    if (!bytes) return '';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
+  }, []);
+
+  const formatTime = useCallback((dateString) => {
+    return new Date(dateString).toLocaleTimeString('fr-FR', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  }, []);
+
+  const formatFullDate = useCallback((dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = now - date;
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (minutes < 1) return 'À l\'instant';
+    if (minutes < 60) return `Il y a ${minutes} min`;
+    if (hours < 24) return `Il y a ${hours} h`;
+    if (days === 1) return 'Hier';
+    if (days < 7) return `Il y a ${days} jours`;
+    
+    return date.toLocaleDateString('fr-FR', { 
+      day: 'numeric', 
+      month: 'long',
+      year: days > 365 ? 'numeric' : undefined
+    });
+  }, []);
+
+  const isMessageFromMe = useCallback((msg) => msg.userId === user?.id, [user]);
+  const canDeleteMessage = useCallback((msg) => 
+    isMessageFromMe(msg) || user?.type === 'admin', 
+    [isMessageFromMe, user]
+  );
+
+  // Gestion des fichiers
+  const handleFileSelect = useCallback((event) => {
     const file = event.target.files[0];
     if (!file) return;
 
@@ -162,44 +371,50 @@ const Chat = () => {
     }
 
     event.target.value = '';
-  };
+  }, []);
 
-  const removeSelectedFile = () => {
+  const removeSelectedFile = useCallback(() => {
     setSelectedFile(null);
     setFilePreview(null);
-  };
+  }, []);
 
-  const addEmoji = (emoji) => {
-    setNouveauMessage(prev => prev + emoji);
-    setShowEmojis(false);
+  // Gestion des emojis
+  const addEmoji = useCallback((emoji) => {
+    setNewMessage(prev => prev + emoji);
     inputRef.current?.focus();
-  };
+  }, []);
 
-  const uploadFile = async (file) => {
+  // Upload fichier
+  const uploadFile = useCallback(async (file) => {
     const formData = new FormData();
     formData.append('file', file);
 
     try {
       const response = await fetch(`${API_URL}/chat/upload`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        headers: { 
+          'Authorization': `Bearer ${localStorage.getItem('token')}` 
+        },
         body: formData
       });
 
-      if (!response.ok) throw new Error('Erreur upload');
+      if (!response.ok) throw new Error('Échec de l\'upload');
       return await response.json();
     } catch (error) {
-      throw new Error('Échec upload');
+      console.error('Upload error:', error);
+      throw error;
     }
-  };
+  }, []);
 
-  const envoyerMessage = async (e) => {
+  // Envoi message
+  const sendMessage = useCallback(async (e) => {
     e.preventDefault();
-    if (!nouveauMessage.trim() && !selectedFile) return;
+    if (!newMessage.trim() && !selectedFile) return;
 
-    const messageContent = nouveauMessage.trim();
+    const messageContent = newMessage.trim();
     let fileData = null;
 
+    // Upload fichier si présent
     if (selectedFile) {
       setIsUploading(true);
       try {
@@ -207,474 +422,838 @@ const Chat = () => {
         fileData = {
           url: uploadResult.fileUrl,
           name: uploadResult.fileName,
-          type: uploadResult.fileType,
-          size: uploadResult.fileSize
+          type: selectedFile.type.includes('image') ? 'image' : 'document',
+          size: selectedFile.size
         };
       } catch (error) {
-        toast.error('Erreur lors de l\'envoi du fichier');
+        toast.error('Erreur lors de l\'upload du fichier');
         setIsUploading(false);
         return;
       }
     }
 
+    // Message temporaire
     const tempId = Date.now();
-    const monMessage = {
-      id: tempId,
+    const tempMessage = {
+      tempId,
       userId: user.id,
       username: user.type === 'admin' ? 'Administrateur' : user.nom,
       message: messageContent,
       type: user.type,
-      date: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
       created_at: new Date().toISOString(),
       isSending: true,
       file: fileData
     };
 
-    setMessages(prev => [...prev, monMessage]);
-    setNouveauMessage('');
+    setMessages(prev => [...prev, tempMessage]);
+    setNewMessage('');
     setSelectedFile(null);
     setFilePreview(null);
     setIsUploading(false);
+    setShowEmojis(false);
+
+    // Arrêter l'indicateur de saisie
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    socket.emit('typing', { 
+      userId: user.id, 
+      username: user.nom || 'Utilisateur', 
+      isTyping: false 
+    });
 
     try {
       const response = await fetch(`${API_URL}/chat/with-file`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ message: messageContent, file: fileData })
+        body: JSON.stringify({ 
+          message: messageContent, 
+          file: fileData 
+        })
       });
 
-      if (!response.ok) throw new Error('Erreur envoi');
-      setMessages(prev => prev.map(msg => msg.id === tempId ? { ...msg, isSending: false } : msg));
+      if (!response.ok) throw new Error('Erreur d\'envoi');
+      
+      const sentMessage = await response.json();
+      setMessages(prev => prev.map(msg => 
+        msg.tempId === tempId ? { ...sentMessage, isSending: false } : msg
+      ));
+      
+      toast.success('Message envoyé');
     } catch (error) {
-      setMessages(prev => prev.map(msg => msg.id === tempId ? { ...msg, isSending: false, hasError: true } : msg));
-      toast.error('Erreur lors de l\'envoi');
-      if (messageContent) setNouveauMessage(messageContent);
-      if (selectedFile) setSelectedFile(selectedFile);
+      console.error('Send error:', error);
+      setMessages(prev => prev.map(msg => 
+        msg.tempId === tempId 
+          ? { ...msg, isSending: false, hasError: true } 
+          : msg
+      ));
+      toast.error('Échec de l\'envoi');
     }
-  };
+  }, [newMessage, selectedFile, user, uploadFile]);
 
-  const getAvatarColor = (username) => {
-    const colors = ['#1e3c72', '#2a5298', '#6a11cb', '#2575fc', '#ff6b6b', '#48c78e', '#f39c12', '#9b59b6'];
-    const index = username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return colors[index % colors.length];
-  };
+  // Suppression message
+  const deleteMessage = useCallback(async (messageId) => {
+    if (!window.confirm('Supprimer ce message ? Cette action est irréversible.')) return;
 
-  const getInitials = (username) => {
-    return username.split(' ').map(word => word[0]).join('').toUpperCase().slice(0, 2);
-  };
+    try {
+      setMessages(prev => prev.map(m =>
+        m.id === messageId ? { ...m, isDeleting: true } : m
+      ));
 
-  const getFileIcon = (fileType) => {
-    return fileType === 'image' ? 'Photo' : 'Document';
-  };
+      const response = await fetch(`${API_URL}/chat/${messageId}`, {
+        method: 'DELETE',
+        headers: { 
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
 
-  const formatFileSize = (bytes) => {
-    if (!bytes) return '';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const formatHeure = (dateString) => {
-    return new Date(dateString).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const formatDateComplete = (dateString) => {
-    const date = new Date(dateString);
-    const aujourdhui = new Date();
-    const hier = new Date(aujourdhui);
-    hier.setDate(hier.getDate() - 1);
-
-    if (date.toDateString() === aujourdhui.toDateString()) {
-      return `Aujourd'hui à ${formatHeure(dateString)}`;
-    } else if (date.toDateString() === hier.toDateString()) {
-      return `Hier à ${formatHeure(dateString)}`;
-    } else {
-      return `${date.toLocaleDateString('fr-FR', { 
-        day: 'numeric', 
-        month: 'long',
-        year: 'numeric'
-      })} à ${formatHeure(dateString)}`;
+      if (!response.ok) throw new Error();
+      
+      setMessages(prev => prev.map(m =>
+        m.id === messageId 
+          ? { ...m, message: '[Message supprimé]', file: null, isDeleted: true, isDeleting: false }
+          : m
+      ));
+      
+      toast.success('Message supprimé');
+    } catch (error) {
+      console.error('Delete error:', error);
+      setMessages(prev => prev.map(m =>
+        m.id === messageId ? { ...m, isDeleting: false } : m
+      ));
+      toast.error('Erreur lors de la suppression');
     }
-  };
+  }, []);
 
-  const formatDateSeparateur = (dateString) => {
-    const date = new Date(dateString);
-    const aujourdhui = new Date();
-    const hier = new Date(aujourdhui);
-    hier.setDate(hier.getDate() - 1);
-
-    if (date.toDateString() === aujourdhui.toDateString()) return "Aujourd'hui";
-    if (date.toDateString() === hier.toDateString()) return "Hier";
+  // Grouper les messages par date
+  const groupedMessages = useMemo(() => {
+    const groups = [];
+    let currentDate = null;
     
-    return date.toLocaleDateString('fr-FR', { 
-      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+    messages.forEach((msg, index) => {
+      const msgDate = new Date(msg.created_at).toDateString();
+      
+      if (msgDate !== currentDate) {
+        currentDate = msgDate;
+        groups.push({
+          type: 'date',
+          date: msg.created_at,
+          id: `date-${msgDate}`
+        });
+      }
+      
+      groups.push({
+        ...msg,
+        type: 'message'
+      });
     });
-  };
+    
+    return groups;
+  }, [messages]);
 
-  const isMessageFromMe = (msg) => msg.userId === user?.id;
-  const canDeleteMessage = (msg) => isMessageFromMe(msg) || user?.type === 'admin';
+  // Render functions
+  const renderMessage = useCallback((msg) => {
+    const isMine = isMessageFromMe(msg);
+    const isDeleted = msg.isDeleted || msg.message === '[Message supprimé]';
 
-  const messagesAvecSeparateurs = [];
-  messages.forEach((message, index) => {
-    if (index === 0 || new Date(message.created_at).toDateString() !== new Date(messages[index - 1].created_at).toDateString()) {
-      messagesAvecSeparateurs.push({ type: 'dateSeparator', date: message.created_at, id: `date-${index}` });
-    }
-    messagesAvecSeparateurs.push({ ...message, type: 'message' });
-  });
-
-  return (
-    <div className="chat-container">
-      <div className="chat-header">
-        <div className="header-content">
-          <div className="chat-info">
-            <div className="chat-icon">Chat</div>
-            <div>
-              <h1>Discussion Générale</h1>
-              <p>Chat entre établissements et administrateur</p>
-            </div>
+    return (
+      <div 
+        key={msg.id || msg.tempId} 
+        className={`message-wrapper ${isMine ? 'own-message' : 'other-message'} ${isDeleted ? 'deleted-message' : ''}`}
+      >
+        {!isMine && !isDeleted && (
+          <div 
+            className="avatar" 
+            style={{ 
+              background: `linear-gradient(135deg, ${getAvatarColor(msg.username)}, ${getAvatarColor(msg.username)}99)` 
+            }}
+            title={msg.username}
+          >
+            {getInitials(msg.username)}
           </div>
-          <div className="status-indicator">
-            <div className={`status-dot ${isOnline ? 'online' : 'offline'}`} />
-            <span>{isOnline ? 'En ligne' : 'Hors ligne'}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="messages-container">
-        {isLoading ? (
-          <div className="loading-state">
-            <div className="loading-spinner"></div>
-            <p>Chargement des messages...</p>
-          </div>
-        ) : messagesAvecSeparateurs.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">Chat</div>
-            <h3>Aucun message</h3>
-            <p>Soyez le premier à envoyer un message !</p>
-          </div>
-        ) : (
-          <>
-            {messagesAvecSeparateurs.map((item) => {
-              if (item.type === 'dateSeparator') {
-                return (
-                  <div key={item.id} className="date-separator">
-                    <div className="separator-line"></div>
-                    <span className="separator-text">{formatDateSeparateur(item.date)}</span>
-                    <div className="separator-line"></div>
-                  </div>
-                );
-              }
-
-              const msg = item;
-              const isMine = isMessageFromMe(msg);
-
-              return (
-                <div key={msg.id} className={`message-wrapper ${isMine ? 'own-message' : 'other-message'}`} style={{ position: 'relative' }}>
-                  {!isMine && (
-                    <div className="avatar" style={{ backgroundColor: getAvatarColor(msg.username) }}>
-                      {getInitials(msg.username)}
-                    </div>
-                  )}
-
-                  <div className="message-content">
-                    <div className="message-bubble">
-                      {/* BOUTON DE SUPPRESSION */}
-                      {canDeleteMessage(msg) && !msg.message?.includes('supprimé') && (
-                        <button onClick={() => supprimerMessage(msg.id)} className="delete-message-btn" title="Supprimer">
-                          Trash
-                        </button>
-                      )}
-
-                      {!isMine && (
-                        <div className="message-header">
-                          <strong className="username">{msg.username}</strong>
-                          {msg.type === 'admin' && <span className="admin-badge">Admin</span>}
-                        </div>
-                      )}
-
-                      {msg.file && (
-                        <div className="file-attachment">
-                          {msg.file.type === 'image' ? (
-                            <div className="image-preview">
-                              <img src={msg.file.url} alt="Image" className="uploaded-image" onClick={() => window.open(msg.file.url, '_blank')} />
-                              <div className="image-overlay"><span className="view-text">Voir l'image</span></div>
-                            </div>
-                          ) : (
-                            <a href={msg.file.url} target="_blank" rel="noopener noreferrer" className="document-link">
-                              <div className="document-preview">
-                                <span className="file-icon">{getFileIcon(msg.file.type)}</span>
-                                <div className="file-info">
-                                  <span className="file-name">{msg.file.name}</span>
-                                  <span className="file-size">{formatFileSize(msg.file.size)}</span>
-                                </div>
-                                <span className="download-icon">Download</span>
-                              </div>
-                            </a>
-                          )}
-                        </div>
-                      )}
-
-                      {msg.message && (
-                        <div className="message-text">
-                          {msg.message.split(' ').map((word, i) => 
-                            emojis.includes(word) ? <span key={i} className="emoji-in-message">{word}</span> : word + ' '
-                          )}
-                        </div>
-                      )}
-
-                      <div className="message-footer">
-                        <span className="message-time" title={formatDateComplete(msg.created_at)}>
-                          {formatHeure(msg.created_at)}
-                        </span>
-                        {msg.isSending && <span className="sending-indicator">Envoi</span>}
-                        {msg.hasError && <span className="error-indicator">Échec</span>}
-                        {msg.file && <span className="file-indicator">Fichier</span>}
-                      </div>
-                    </div>
-                  </div>
-
-                  {isMine && (
-                    <div className="avatar own-avatar" style={{ backgroundColor: getAvatarColor(msg.username) }}>
-                      {getInitials(msg.username)}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            <div ref={messagesEndRef} />
-          </>
         )}
-      </div>
 
-      {/* Prévisualisation du fichier */}
-      {selectedFile && (
-        <div className="file-preview">
-          <div className="preview-header">
-            <span>Fichier sélectionné :</span>
-            <button type="button" onClick={removeSelectedFile} className="remove-file-btn">×</button>
-          </div>
-          <div className="preview-content">
-            {filePreview ? (
-              <div className="image-preview-small">
-                <img src={filePreview} alt="Aperçu" />
-                <span>{selectedFile.name}</span>
-              </div>
-            ) : (
-              <div className="document-preview-small">
-                <span className="file-icon">{getFileIcon('document')}</span>
-                <div className="file-info">
-                  <span className="file-name">{selectedFile.name}</span>
-                  <span className="file-size">{formatFileSize(selectedFile.size)}</span>
-                </div>
+        <div className="message-content">
+          <div className="message-bubble">
+            {/* En-tête pour messages des autres */}
+            {!isMine && !isDeleted && (
+              <div className="message-header">
+                <strong className="username">{msg.username}</strong>
+                {msg.type === 'admin' && (
+                  <span className="badge admin-badge">Admin</span>
+                )}
+                <span className="message-time">
+                  {formatFullDate(msg.created_at)}
+                </span>
               </div>
             )}
-          </div>
-        </div>
-      )}
 
-      {/* Formulaire d'envoi */}
-      <form onSubmit={envoyerMessage} className="input-container">
-        <div className="input-wrapper">
-          <div className="input-actions">
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="attach-file-btn" disabled={isUploading}>
-              Attach
-            </button>
-            <button type="button" onClick={() => setShowEmojis(!showEmojis)} className="emoji-btn">
-              Emoji
-            </button>
-            <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept="image/*,.pdf,.doc,.docx" style={{ display: 'none' }} />
-          </div>
+            {/* Contenu du message */}
+            {isDeleted ? (
+              <div className="deleted-content">
+                <X size={14} />
+                <span>Message supprimé</span>
+              </div>
+            ) : (
+              <>
+                {/* Fichier joint */}
+                {msg.file && (
+                  <div className="file-attachment">
+                    {msg.file.type === 'image' ? (
+                      <div className="image-attachment">
+                        <img 
+                          src={msg.file.url} 
+                          alt="Image envoyée" 
+                          loading="lazy"
+                        />
+                        <div className="image-overlay">
+                          <button 
+                            className="view-btn"
+                            onClick={() => window.open(msg.file.url, '_blank')}
+                          >
+                            <Eye size={16} />
+                            <span>Agrandir</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <a 
+                        href={msg.file.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="document-attachment"
+                      >
+                        <FileText size={24} />
+                        <div className="document-info">
+                          <span className="filename">{msg.file.name}</span>
+                          <span className="filesize">{formatFileSize(msg.file.size)}</span>
+                        </div>
+                        <Download size={20} className="download-icon" />
+                      </a>
+                    )}
+                  </div>
+                )}
 
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Tapez votre message..."
-            value={nouveauMessage}
-            onChange={e => setNouveauMessage(e.target.value)}
-            className="message-input"
-            disabled={!isOnline || isUploading}
-          />
+                {/* Texte du message */}
+                {msg.message && (
+                  <div className="message-text">
+                    {msg.message}
+                  </div>
+                )}
+              </>
+            )}
 
-          <button type="submit" className="send-button" disabled={(!nouveauMessage.trim() && !selectedFile) || !isOnline || isUploading}>
-            {isUploading ? <div className="uploading-indicator"></div> : <>Send Envoyer</>}
-          </button>
-        </div>
+            {/* Pied de message */}
+            <div className="message-footer">
+              {isMine && !isDeleted && (
+                <span className="message-time">
+                  {formatFullDate(msg.created_at)}
+                </span>
+              )}
+              
+              {/* Indicateurs d'état */}
+              <div className="message-status">
+                {msg.isSending && (
+                  <span className="status sending">
+                    <Clock size={12} />
+                  </span>
+                )}
+                {msg.isDeleting && (
+                  <span className="status deleting">
+                    <Clock size={12} />
+                  </span>
+                )}
+                {msg.hasError && (
+                  <span className="status error">
+                    <AlertCircle size={12} />
+                  </span>
+                )}
+                {!msg.hasError && !msg.isSending && isMine && (
+                  <span className="status sent">
+                    <Check size={12} />
+                  </span>
+                )}
+              </div>
 
-        {showEmojis && (
-          <div ref={emojiPickerRef} className="emoji-picker">
-            <div className="emoji-picker-header">
-              <span>Choisissez un émoji</span>
-              <button type="button" onClick={() => setShowEmojis(false)} className="close-emoji-btn">×</button>
-            </div>
-            <div className="emoji-grid">
-              {emojis.map((emoji, i) => (
-                <button key={i} type="button" className="emoji-item" onClick={() => addEmoji(emoji)}>
-                  {emoji}
+              {/* Bouton de suppression */}
+              {canDeleteMessage(msg) && !isDeleted && !msg.isDeleting && (
+                <button 
+                  className="delete-btn"
+                  onClick={() => deleteMessage(msg.id)}
+                  title="Supprimer le message"
+                >
+                  <Trash2 size={14} />
                 </button>
-              ))}
+              )}
+            </div>
+          </div>
+        </div>
+
+        {isMine && !isDeleted && (
+          <div 
+            className="avatar own-avatar"
+            style={{ 
+              background: `linear-gradient(135deg, ${getAvatarColor(msg.username)}, ${getAvatarColor(msg.username)}99)` 
+            }}
+            title="Vous"
+          >
+            {getInitials(msg.username)}
+          </div>
+        )}
+      </div>
+    );
+  }, [isMessageFromMe, getAvatarColor, getInitials, formatFullDate, formatFileSize, canDeleteMessage, deleteMessage]);
+
+  const renderDateSeparator = useCallback((date) => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const dateObj = new Date(date);
+    let label;
+    
+    if (dateObj.toDateString() === today.toDateString()) {
+      label = "Aujourd'hui";
+    } else if (dateObj.toDateString() === yesterday.toDateString()) {
+      label = 'Hier';
+    } else {
+      label = dateObj.toLocaleDateString('fr-FR', { 
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long'
+      });
+    }
+    
+    return (
+      <div key={date} className="date-separator">
+        <div className="separator-line"></div>
+        <span className="separator-label">{label}</span>
+        <div className="separator-line"></div>
+      </div>
+    );
+  }, []);
+
+  return (
+    <>
+      <ToastContainer 
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+      />
+      
+      <div className="chat-container">
+        {/* En-tête */}
+        <header className="chat-header">
+          <div className="header-content">
+            <div className="chat-info">
+              <div className="chat-icon">
+                <Users size={32} />
+              </div>
+              <div className="chat-title">
+                <h1>Chat Général</h1>
+                <p className="chat-subtitle">
+                  {onlineUsers} {onlineUsers === 1 ? 'personne en ligne' : 'personnes en ligne'}
+                </p>
+              </div>
+            </div>
+            
+            <div className="header-actions">
+              <div className={`connection-status ${isOnline ? 'online' : 'offline'}`}>
+                {isOnline ? (
+                  <>
+                    <Wifi size={16} />
+                    <span>En ligne</span>
+                  </>
+                ) : (
+                  <>
+                    <WifiOff size={16} />
+                    <span>Hors ligne</span>
+                  </>
+                )}
+              </div>
+              
+              <div className="options-container" ref={optionsRef}>
+                <button 
+                  className="options-btn"
+                  onClick={() => setShowOptions(!showOptions)}
+                >
+                  <MoreVertical size={20} />
+                </button>
+                
+                {showOptions && (
+                  <div className="options-dropdown">
+                    <button className="dropdown-item">
+                      Paramètres du chat
+                    </button>
+                    <button className="dropdown-item">
+                      Effacer l'historique
+                    </button>
+                    <button className="dropdown-item">
+                      Exporter les messages
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          {/* Indicateur de saisie */}
+          {typingUsers.size > 0 && (
+            <div className="typing-indicator">
+              <div className="typing-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <span className="typing-text">
+                {Array.from(typingUsers).join(', ')} {typingUsers.size === 1 ? 'est en train d\'écrire' : 'sont en train d\'écrire'}...
+              </span>
+            </div>
+          )}
+        </header>
+
+        {/* Zone des messages */}
+        <main className="messages-container">
+          {isLoading ? (
+            <div className="loading-state">
+              <div className="spinner"></div>
+              <p>Chargement des messages...</p>
+            </div>
+          ) : groupedMessages.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">
+                <Send size={48} />
+              </div>
+              <h3>Commencez la conversation !</h3>
+              <p>Soyez le premier à envoyer un message.</p>
+            </div>
+          ) : (
+            <>
+              {groupedMessages.map((item) => {
+                if (item.type === 'date') {
+                  return renderDateSeparator(item.date);
+                }
+                return renderMessage(item);
+              })}
+              <div ref={messagesEndRef} />
+            </>
+          )}
+        </main>
+
+        {/* Prévisualisation fichier */}
+        {selectedFile && (
+          <div className="file-preview">
+            <div className="preview-header">
+              <span>Fichier sélectionné :</span>
+              <button 
+                type="button" 
+                className="remove-btn"
+                onClick={removeSelectedFile}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="preview-content">
+              {filePreview ? (
+                <div className="image-preview">
+                  <img src={filePreview} alt="Aperçu" />
+                  <div className="file-info">
+                    <span className="filename">{selectedFile.name}</span>
+                    <span className="filesize">{formatFileSize(selectedFile.size)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="document-preview">
+                  <FileText size={32} />
+                  <div className="file-info">
+                    <span className="filename">{selectedFile.name}</span>
+                    <span className="filesize">{formatFileSize(selectedFile.size)}</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        <div className="input-footer">
-          {!isOnline && <div className="offline-warning">Vous êtes hors ligne</div>}
-          {isUploading && <div className="uploading-message">Envoi en cours...</div>}
-          <div className="file-info-text">Formats : JPEG, PNG, GIF, WebP, PDF, Word (max 10MB)</div>
-        </div>
-      </form>
-
-
+        {/* Zone de saisie */}
+        <form onSubmit={sendMessage} className="input-container">
+          <div className="input-wrapper">
+            <div className="input-actions">
+              <button 
+                type="button" 
+                className="action-btn attach-btn"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!isOnline || isUploading}
+                title="Joindre un fichier"
+              >
+                <Paperclip size={20} />
+              </button>
+              
+              <button 
+                type="button" 
+                className="action-btn emoji-btn"
+                onClick={() => setShowEmojis(!showEmojis)}
+                disabled={!isOnline || isUploading}
+                title="Insérer un emoji"
+              >
+                <Smile size={20} />
+              </button>
+              
+              <input 
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                accept="image/*,.pdf,.doc,.docx"
+                style={{ display: 'none' }}
+              />
+            </div>
+            
+            <input
+              ref={inputRef}
+              type="text"
+              className="message-input"
+              placeholder={isOnline ? "Écrivez votre message..." : "Connexion perdue..."}
+              value={newMessage}
+              onChange={(e) => {
+                setNewMessage(e.target.value);
+                handleTyping();
+              }}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (newMessage.trim() || selectedFile) {
+                    sendMessage(e);
+                  }
+                }
+              }}
+              disabled={!isOnline || isUploading}
+            />
+            
+            <button
+              type="submit"
+              className="send-btn"
+              disabled={(!newMessage.trim() && !selectedFile) || !isOnline || isUploading}
+            >
+              {isUploading ? (
+                <div className="upload-spinner"></div>
+              ) : (
+                <>
+                  <Send size={20} />
+                  <span className="send-text">Envoyer</span>
+                </>
+              )}
+            </button>
+          </div>
+          
+          {/* Sélecteur d'emojis */}
+          {showEmojis && (
+            <div className="emoji-picker" ref={emojiPickerRef}>
+              <div className="emoji-header">
+                <div className="emoji-categories">
+                  {EMOJI_CATEGORIES.map((category, index) => (
+                    <button
+                      key={category.name}
+                      className={`category-btn ${activeEmojiCategory === index ? 'active' : ''}`}
+                      onClick={() => setActiveEmojiCategory(index)}
+                    >
+                      {category.emojis[0]}
+                    </button>
+                  ))}
+                </div>
+                <button 
+                  className="close-emoji-btn"
+                  onClick={() => setShowEmojis(false)}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="emoji-grid">
+                {EMOJI_CATEGORIES[activeEmojiCategory].emojis.map((emoji, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    className="emoji-item"
+                    onClick={() => addEmoji(emoji)}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Informations */}
+          <div className="input-footer">
+            {!isOnline && (
+              <div className="offline-notice">
+                <AlertCircle size={16} />
+                <span>Vous êtes hors ligne. Reconnexion...</span>
+              </div>
+            )}
+            <div className="file-info">
+              Formats supportés : JPEG, PNG, GIF, WebP, PDF, Word • Max 10MB
+            </div>
+          </div>
+        </form>
+      </div>
 
       <style jsx>{`
+        /* Variables CSS */
+        :root {
+          --primary: #1e3c72;
+          --primary-light: #2a5298;
+          --secondary: #6a11cb;
+          --success: #48c78e;
+          --danger: #ef4444;
+          --warning: #f39c12;
+          --info: #3498db;
+          --light: #f8fafc;
+          --dark: #1e293b;
+          --gray-100: #f1f5f9;
+          --gray-200: #e2e8f0;
+          --gray-300: #cbd5e1;
+          --gray-400: #94a3b8;
+          --gray-500: #64748b;
+          --gray-600: #475569;
+          --gray-700: #334155;
+          --gray-800: #1e293b;
+          --gray-900: #0f172a;
+          
+          --radius-sm: 8px;
+          --radius-md: 12px;
+          --radius-lg: 16px;
+          --radius-xl: 24px;
+          
+          --shadow-sm: 0 2px 8px rgba(0,0,0,0.1);
+          --shadow-md: 0 4px 20px rgba(0,0,0,0.15);
+          --shadow-lg: 0 8px 40px rgba(0,0,0,0.2);
+          --shadow-inner: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
 
-      .message-bubble {
-  position: relative; /* Nécessaire pour positionner le bouton à l'intérieur */
-}
+        /* Reset & Base */
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+        }
 
-.delete-message-btn {
-  position: absolute;
-  top: -5px; /* Ajuster la position */
-  right: -5px; /* Ajuster la position */
-  background: #ef4444; /* Rouge pour danger */
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.7rem;
-  cursor: pointer;
-  opacity: 0.7;
-  transition: opacity 0.2s, transform 0.2s;
-  z-index: 10;
-}
+        body {
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          min-height: 100vh;
+          margin: 0;
+        }
 
-.delete-message-btn:hover {
-  opacity: 1;
-  transform: scale(1.1);
-}
-
-.deleted-message .message-bubble {
-  background: #f1f5f9 !important; /* Arrière-plan gris clair */
-  color: #94a3b8 !important; /* Texte gris */
-  font-style: italic;
-  box-shadow: none;
-  border: 1px solid #e2e8f0;
-}
-
-/* Masquer le contenu non pertinent pour les messages supprimés */
-.deleted-message .message-text, 
-.deleted-message .message-footer {
-  color: #94a3b8 !important;
-}
-.deleted-message .file-attachment,
-.deleted-message .message-header {
-  display: none;
-}
+        /* Container principal */
         .chat-container {
           max-width: 1000px;
-          margin: 2rem auto;
+          height: 90vh;
+          margin: 5vh auto;
           background: white;
-          border-radius: 24px;
-          box-shadow: 0 25px 70px rgba(0,0,0,0.15);
-          height: 85vh;
+          border-radius: var(--radius-xl);
+          box-shadow: var(--shadow-lg);
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          font-family: 'Inter', system-ui, sans-serif;
+          position: relative;
         }
 
+        /* En-tête */
         .chat-header {
-          background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+          background: linear-gradient(135deg, var(--primary), var(--primary-light));
           color: white;
           padding: 1.5rem 2rem;
           position: relative;
-          overflow: hidden;
-        }
-
-        .chat-header::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          right: 0;
-          width: 150px;
-          height: 150px;
-          background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1));
-          border-radius: 50%;
-          transform: translate(30%, -30%);
+          z-index: 10;
         }
 
         .header-content {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          position: relative;
-          z-index: 2;
+          gap: 1rem;
         }
 
         .chat-info {
           display: flex;
           align-items: center;
           gap: 1rem;
+          flex: 1;
         }
 
         .chat-icon {
-          font-size: 2.5rem;
-          filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
+          background: rgba(255,255,255,0.2);
+          border-radius: var(--radius-lg);
+          padding: 0.75rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          backdrop-filter: blur(10px);
         }
 
-        .chat-info h1 {
-          margin: 0;
+        .chat-title h1 {
           font-size: 1.5rem;
           font-weight: 700;
+          margin: 0 0 0.25rem 0;
+          line-height: 1.2;
         }
 
-        .chat-info p {
-          margin: 0.25rem 0 0 0;
+        .chat-subtitle {
+          font-size: 0.875rem;
           opacity: 0.9;
-          font-size: 0.95rem;
+          margin: 0;
         }
 
-        .status-indicator {
+        .header-actions {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+        }
+
+        .connection-status {
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          background: rgba(255,255,255,0.2);
           padding: 0.5rem 1rem;
           border-radius: 20px;
+          font-size: 0.875rem;
+          font-weight: 500;
           backdrop-filter: blur(10px);
-          border: 1px solid rgba(255,255,255,0.3);
         }
 
-        .status-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
+        .connection-status.online {
+          background: rgba(72, 199, 142, 0.2);
+          border: 1px solid rgba(72, 199, 142, 0.3);
+        }
+
+        .connection-status.offline {
+          background: rgba(239, 68, 68, 0.2);
+          border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .options-container {
+          position: relative;
+        }
+
+        .options-btn {
+          background: rgba(255,255,255,0.2);
+          border: none;
+          border-radius: var(--radius-md);
+          width: 40px;
+          height: 40px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
           transition: all 0.3s ease;
+          color: white;
         }
 
-        .status-dot.online {
-          background: #48c78e;
-          box-shadow: 0 0 10px rgba(72,199,142,0.5);
+        .options-btn:hover {
+          background: rgba(255,255,255,0.3);
+          transform: rotate(90deg);
         }
 
-        .status-dot.offline {
-          background: #e74c3c;
+        .options-dropdown {
+          position: absolute;
+          top: 100%;
+          right: 0;
+          background: white;
+          border-radius: var(--radius-md);
+          box-shadow: var(--shadow-lg);
+          min-width: 200px;
+          overflow: hidden;
+          z-index: 1000;
+          margin-top: 0.5rem;
         }
 
+        .dropdown-item {
+          display: block;
+          width: 100%;
+          padding: 0.75rem 1rem;
+          text-align: left;
+          border: none;
+          background: transparent;
+          color: var(--gray-800);
+          cursor: pointer;
+          font-size: 0.875rem;
+          transition: all 0.2s ease;
+        }
+
+        .dropdown-item:hover {
+          background: var(--gray-100);
+          color: var(--primary);
+        }
+
+        .typing-indicator {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          margin-top: 1rem;
+          padding: 0.5rem 1rem;
+          background: rgba(255,255,255,0.1);
+          border-radius: var(--radius-md);
+          backdrop-filter: blur(10px);
+          animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .typing-dots {
+          display: flex;
+          gap: 2px;
+        }
+
+        .typing-dots span {
+          width: 6px;
+          height: 6px;
+          background: white;
+          border-radius: 50%;
+          animation: typing 1.4s infinite;
+        }
+
+        .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+          0%, 60%, 100% { transform: translateY(0); }
+          30% { transform: translateY(-4px); }
+        }
+
+        .typing-text {
+          font-size: 0.875rem;
+          opacity: 0.9;
+        }
+
+        /* Zone des messages */
         .messages-container {
           flex: 1;
-          padding: 1rem 2rem;
           overflow-y: auto;
-          background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+          padding: 1.5rem 2rem;
+          background: linear-gradient(180deg, var(--gray-100) 0%, white 100%);
           display: flex;
           flex-direction: column;
+          gap: 1.5rem;
+          position: relative;
         }
 
         .messages-container::-webkit-scrollbar {
@@ -686,81 +1265,93 @@ const Chat = () => {
         }
 
         .messages-container::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
+          background: var(--gray-300);
           border-radius: 4px;
         }
 
         .messages-container::-webkit-scrollbar-thumb:hover {
-          background: #94a3b8;
+          background: var(--gray-400);
         }
 
-        .date-separator {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin: 1.5rem 0;
-          gap: 1rem;
-        }
-
-        .separator-line {
-          flex: 1;
-          height: 1px;
-          background: linear-gradient(90deg, transparent, #cbd5e1, transparent);
-        }
-
-        .separator-text {
-          font-size: 0.8rem;
-          color: #64748b;
-          font-weight: 600;
-          padding: 0.5rem 1rem;
-          background: rgba(255,255,255,0.8);
-          border-radius: 12px;
-          backdrop-filter: blur(10px);
-          border: 1px solid #e2e8f0;
-          white-space: nowrap;
-        }
-
+        /* États de chargement/vide */
         .loading-state, .empty-state {
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
           height: 100%;
-          color: #64748b;
+          color: var(--gray-500);
         }
 
-        .loading-spinner {
+        .spinner {
           width: 40px;
           height: 40px;
-          border: 3px solid #e2e8f0;
-          border-top: 3px solid #1e3c72;
+          border: 3px solid var(--gray-200);
+          border-top: 3px solid var(--primary);
           border-radius: 50%;
           animation: spin 1s linear infinite;
           margin-bottom: 1rem;
         }
 
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-
         .empty-icon {
-          font-size: 4rem;
+          opacity: 0.3;
           margin-bottom: 1rem;
-          opacity: 0.5;
         }
 
         .empty-state h3 {
           margin: 0 0 0.5rem 0;
-          color: #374151;
+          color: var(--gray-700);
         }
 
+        .empty-state p {
+          margin: 0;
+          font-size: 0.875rem;
+        }
+
+        /* Séparateur de date */
+        .date-separator {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          margin: 1rem 0;
+        }
+
+        .separator-line {
+          flex: 1;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, var(--gray-300), transparent);
+        }
+
+        .separator-label {
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: var(--gray-500);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          padding: 0.25rem 1rem;
+          background: white;
+          border-radius: 12px;
+          border: 1px solid var(--gray-200);
+          white-space: nowrap;
+        }
+
+        /* Message */
         .message-wrapper {
           display: flex;
-          align-items: flex-end;
           gap: 0.75rem;
-          margin-bottom: 1rem;
           max-width: 80%;
+          animation: messageAppear 0.3s ease;
+        }
+
+        @keyframes messageAppear {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
 
         .own-message {
@@ -773,21 +1364,22 @@ const Chat = () => {
         }
 
         .avatar {
-          width: 40px;
-          height: 40px;
+          width: 36px;
+          height: 36px;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
           color: white;
           font-weight: 600;
-          font-size: 0.8rem;
+          font-size: 0.75rem;
           flex-shrink: 0;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          border: 2px solid white;
+          box-shadow: var(--shadow-sm);
         }
 
         .own-avatar {
-          background: linear-gradient(135deg, #1e3c72, #2a5298) !important;
+          background: linear-gradient(135deg, var(--primary), var(--primary-light));
         }
 
         .message-content {
@@ -796,24 +1388,24 @@ const Chat = () => {
         }
 
         .message-bubble {
-          padding: 1rem 1.25rem;
-          border-radius: 20px;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+          padding: 0.75rem 1rem;
+          border-radius: var(--radius-lg);
           position: relative;
-          word-wrap: break-word;
+          background: white;
+          border: 1px solid var(--gray-200);
+          box-shadow: var(--shadow-sm);
+          transition: all 0.3s ease;
         }
 
         .own-message .message-bubble {
-          background: linear-gradient(135deg, #1e3c72, #2a5298);
+          background: linear-gradient(135deg, var(--primary), var(--primary-light));
           color: white;
-          border-bottom-right-radius: 6px;
+          border: none;
+          border-radius: var(--radius-lg) var(--radius-lg) 4px var(--radius-lg);
         }
 
         .other-message .message-bubble {
-          background: white;
-          color: #333;
-          border: 1px solid #e2e8f0;
-          border-bottom-left-radius: 6px;
+          border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) 4px;
         }
 
         .message-header {
@@ -824,29 +1416,30 @@ const Chat = () => {
         }
 
         .username {
-          font-size: 0.9rem;
-          opacity: 0.9;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: var(--gray-700);
         }
 
         .admin-badge {
-          background: #e74c3c;
+          background: var(--danger);
           color: white;
-          padding: 0.2rem 0.5rem;
-          border-radius: 12px;
-          font-size: 0.7rem;
+          padding: 0.125rem 0.5rem;
+          border-radius: 10px;
+          font-size: 0.625rem;
           font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
         }
 
         .message-text {
           line-height: 1.5;
-          margin: 0.5rem 0;
-          font-size: 1rem;
+          font-size: 0.9375rem;
+          word-wrap: break-word;
         }
 
-        .emoji-in-message {
-          font-size: 1.2rem;
-          display: inline-block;
-          margin: 0 2px;
+        .own-message .message-text {
+          color: white;
         }
 
         .message-footer {
@@ -860,36 +1453,93 @@ const Chat = () => {
         .message-time {
           font-size: 0.75rem;
           opacity: 0.7;
-          cursor: help;
         }
 
-        .sending-indicator, .error-indicator, .file-indicator {
-          font-size: 0.8rem;
+        .message-status {
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
         }
 
+        .status {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .status.sending, .status.deleting {
+          color: var(--gray-400);
+          animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+
+        .status.sent {
+          color: var(--success);
+        }
+
+        .status.error {
+          color: var(--danger);
+        }
+
+        .delete-btn {
+          background: transparent;
+          border: none;
+          color: var(--gray-400);
+          cursor: pointer;
+          padding: 0.25rem;
+          border-radius: var(--radius-sm);
+          transition: all 0.2s ease;
+          opacity: 0;
+        }
+
+        .message-bubble:hover .delete-btn {
+          opacity: 1;
+        }
+
+        .delete-btn:hover {
+          color: var(--danger);
+          background: rgba(239, 68, 68, 0.1);
+        }
+
+        /* Message supprimé */
+        .deleted-message .message-bubble {
+          background: var(--gray-100);
+          border-color: var(--gray-200);
+          color: var(--gray-500);
+        }
+
+        .deleted-content {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-style: italic;
+          font-size: 0.875rem;
+        }
+
+        /* Fichiers joints */
         .file-attachment {
           margin-bottom: 0.75rem;
         }
 
-        .image-preview {
+        .image-attachment {
           position: relative;
-          border-radius: 12px;
+          border-radius: var(--radius-md);
           overflow: hidden;
-          cursor: pointer;
           max-width: 300px;
-          transition: all 0.3s ease;
+          cursor: pointer;
+          border: 1px solid var(--gray-200);
         }
 
-        .uploaded-image {
+        .image-attachment img {
           width: 100%;
           max-height: 200px;
           object-fit: cover;
           display: block;
           transition: transform 0.3s ease;
-        }
-
-        .image-preview:hover .uploaded-image {
-          transform: scale(1.05);
         }
 
         .image-overlay {
@@ -898,7 +1548,7 @@ const Chat = () => {
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(0,0,0,0.7);
+          background: rgba(0,0,0,0.5);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -906,102 +1556,128 @@ const Chat = () => {
           transition: opacity 0.3s ease;
         }
 
-        .image-preview:hover .image-overlay {
+        .image-attachment:hover .image-overlay {
           opacity: 1;
         }
 
-        .view-text {
-          color: white;
-          font-weight: 600;
+        .image-attachment:hover img {
+          transform: scale(1.02);
         }
 
-        .document-link {
-          text-decoration: none;
-          color: inherit;
+        .view-btn {
+          background: rgba(255,255,255,0.9);
+          border: none;
+          border-radius: var(--radius-md);
+          padding: 0.5rem 1rem;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          color: var(--gray-800);
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.3s ease;
         }
 
-        .document-preview {
+        .view-btn:hover {
+          background: white;
+          transform: translateY(-2px);
+          box-shadow: var(--shadow-md);
+        }
+
+        .document-attachment {
           display: flex;
           align-items: center;
           gap: 1rem;
           padding: 1rem;
-          background: #f8fafc;
-          border-radius: 12px;
-          border: 1px solid #e2e8f0;
+          background: white;
+          border: 1px solid var(--gray-200);
+          border-radius: var(--radius-md);
+          text-decoration: none;
+          color: var(--gray-800);
           transition: all 0.3s ease;
           max-width: 300px;
         }
 
-        .document-preview:hover {
-          background: #e2e8f0;
+        .document-attachment:hover {
+          background: var(--gray-100);
           transform: translateY(-2px);
-          box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+          box-shadow: var(--shadow-md);
         }
 
-        .file-icon {
-          font-size: 1.5rem;
-        }
-
-        .download-icon {
-          font-size: 1.2rem;
-          opacity: 0.7;
-        }
-
-        .file-info {
+        .document-info {
           flex: 1;
           min-width: 0;
         }
 
-        .file-name {
+        .filename {
           display: block;
-          font-weight: 600;
+          font-weight: 500;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
 
-        .file-size {
+        .filesize {
           display: block;
-          font-size: 0.8rem;
-          color: #64748b;
+          font-size: 0.75rem;
+          color: var(--gray-500);
           margin-top: 0.25rem;
         }
 
+        .download-icon {
+          color: var(--gray-400);
+          transition: color 0.3s ease;
+        }
+
+        .document-attachment:hover .download-icon {
+          color: var(--primary);
+        }
+
+        /* Prévisualisation fichier */
         .file-preview {
-          background: #f8fafc;
-          border-top: 1px solid #e2e8f0;
+          background: var(--gray-100);
+          border-top: 1px solid var(--gray-200);
           padding: 1rem 2rem;
+          animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
 
         .preview-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 0.5rem;
-          font-size: 0.9rem;
-          color: #64748b;
+          margin-bottom: 0.75rem;
+        }
+
+        .preview-header span {
+          font-size: 0.875rem;
+          color: var(--gray-600);
           font-weight: 500;
         }
 
-        .remove-file-btn {
-          background: #ef4444;
-          color: white;
+        .remove-btn {
+          background: transparent;
           border: none;
-          width: 24px;
-          height: 24px;
-          border-radius: 50%;
+          color: var(--gray-400);
           cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 1.2rem;
-          line-height: 1;
+          padding: 0.25rem;
+          border-radius: var(--radius-sm);
           transition: all 0.3s ease;
         }
 
-        .remove-file-btn:hover {
-          background: #dc2626;
-          transform: scale(1.1);
+        .remove-btn:hover {
+          color: var(--danger);
+          background: rgba(239, 68, 68, 0.1);
         }
 
         .preview-content {
@@ -1010,102 +1686,103 @@ const Chat = () => {
           gap: 1rem;
         }
 
-        .image-preview-small {
+        .image-preview {
           display: flex;
           align-items: center;
-          gap: 0.75rem;
+          gap: 1rem;
         }
 
-        .image-preview-small img {
+        .image-preview img {
           width: 50px;
           height: 50px;
-          border-radius: 8px;
+          border-radius: var(--radius-md);
           object-fit: cover;
-          border: 2px solid #e2e8f0;
+          border: 2px solid var(--gray-200);
         }
 
-        .document-preview-small {
+        .document-preview {
           display: flex;
           align-items: center;
-          gap: 0.75rem;
+          gap: 1rem;
           padding: 0.75rem;
           background: white;
-          border-radius: 12px;
-          border: 1px solid #e2e8f0;
+          border-radius: var(--radius-md);
+          border: 1px solid var(--gray-200);
         }
 
+        /* Zone de saisie */
         .input-container {
-          position: relative;
           padding: 1.5rem 2rem;
           background: white;
-          border-top: 1px solid #e2e8f0;
+          border-top: 1px solid var(--gray-200);
+          position: relative;
         }
 
         .input-wrapper {
           display: flex;
-          gap: 1rem;
+          gap: 0.75rem;
           align-items: flex-end;
         }
 
         .input-actions {
           display: flex;
-          align-items: center;
           gap: 0.5rem;
         }
 
-        .attach-file-btn, .emoji-btn {
+        .action-btn {
           background: transparent;
           border: none;
-          font-size: 1.5rem;
+          color: var(--gray-500);
           cursor: pointer;
           padding: 0.5rem;
-          border-radius: 50%;
+          border-radius: var(--radius-md);
           transition: all 0.3s ease;
           display: flex;
           align-items: center;
           justify-content: center;
         }
 
-        .attach-file-btn:hover:not(:disabled), .emoji-btn:hover:not(:disabled) {
-          background: #f1f5f9;
-          transform: scale(1.1);
+        .action-btn:hover:not(:disabled) {
+          background: var(--gray-100);
+          color: var(--primary);
         }
 
-        .attach-file-btn:disabled, .emoji-btn:disabled {
+        .action-btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
         }
 
         .message-input {
           flex: 1;
-          padding: 1rem 1.5rem;
-          border: 2px solid #e2e8f0;
-          border-radius: 25px;
-          font-size: 1rem;
+          padding: 0.875rem 1.25rem;
+          border: 2px solid var(--gray-200);
+          border-radius: var(--radius-lg);
+          font-size: 0.9375rem;
+          font-family: inherit;
           transition: all 0.3s ease;
           background: white;
           resize: none;
-          min-height: 50px;
+          min-height: 48px;
           max-height: 120px;
         }
 
         .message-input:focus {
           outline: none;
-          border-color: #1e3c72;
-          box-shadow: 0 0 0 4px rgba(30,60,114,0.1);
+          border-color: var(--primary);
+          box-shadow: 0 0 0 3px rgba(30, 60, 114, 0.1);
         }
 
         .message-input:disabled {
-          background: #f8fafc;
+          background: var(--gray-100);
           cursor: not-allowed;
         }
 
-        .send-button {
-          padding: 1rem 1.5rem;
-          background: linear-gradient(135deg, #1e3c72, #2a5298);
+        .send-btn {
+          background: linear-gradient(135deg, var(--primary), var(--primary-light));
           color: white;
           border: none;
-          border-radius: 25px;
+          border-radius: var(--radius-lg);
+          padding: 0.875rem 1.5rem;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.3s ease;
@@ -1115,22 +1792,18 @@ const Chat = () => {
           white-space: nowrap;
         }
 
-        .send-button:hover:not(:disabled) {
+        .send-btn:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 8px 25px rgba(30,60,114,0.4);
+          box-shadow: 0 8px 25px rgba(30, 60, 114, 0.4);
         }
 
-        .send-button:disabled {
+        .send-btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
           transform: none;
         }
 
-        .send-icon {
-          font-size: 1.1rem;
-        }
-
-        .uploading-indicator {
+        .upload-spinner {
           width: 20px;
           height: 20px;
           border: 2px solid transparent;
@@ -1139,58 +1812,73 @@ const Chat = () => {
           animation: spin 1s linear infinite;
         }
 
+        .send-text {
+          font-size: 0.9375rem;
+        }
+
+        /* Sélecteur d'emojis */
         .emoji-picker {
           position: absolute;
           bottom: 100%;
-          left: 0;
+          left: 2rem;
           background: white;
-          border: 1px solid #e2e8f0;
-          border-radius: 16px;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+          border: 1px solid var(--gray-200);
+          border-radius: var(--radius-lg);
+          box-shadow: var(--shadow-lg);
+          width: 350px;
           max-height: 300px;
-          overflow-y: auto;
+          overflow: hidden;
           z-index: 1000;
           margin-bottom: 1rem;
-          width: 350px;
+          animation: slideUp 0.3s ease;
         }
 
-        .emoji-picker-header {
+        .emoji-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 1rem 1.5rem;
-          border-bottom: 1px solid #e2e8f0;
-          background: #f8fafc;
-          border-radius: 16px 16px 0 0;
-          position: sticky;
-          top: 0;
+          padding: 1rem;
+          border-bottom: 1px solid var(--gray-200);
+          background: var(--gray-100);
         }
 
-        .emoji-picker-header span {
-          font-weight: 600;
-          color: #1e3c72;
-          font-size: 0.9rem;
+        .emoji-categories {
+          display: flex;
+          gap: 0.5rem;
+        }
+
+        .category-btn {
+          background: transparent;
+          border: none;
+          font-size: 1.25rem;
+          cursor: pointer;
+          padding: 0.25rem;
+          border-radius: var(--radius-sm);
+          transition: all 0.3s ease;
+        }
+
+        .category-btn:hover {
+          background: var(--gray-200);
+        }
+
+        .category-btn.active {
+          background: var(--primary);
+          color: white;
         }
 
         .close-emoji-btn {
-          background: #ef4444;
-          color: white;
+          background: transparent;
           border: none;
-          width: 24px;
-          height: 24px;
-          border-radius: 50%;
+          color: var(--gray-500);
           cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 1.2rem;
-          line-height: 1;
+          padding: 0.25rem;
+          border-radius: var(--radius-sm);
           transition: all 0.3s ease;
         }
 
         .close-emoji-btn:hover {
-          background: #dc2626;
-          transform: scale(1.1);
+          color: var(--danger);
+          background: rgba(239, 68, 68, 0.1);
         }
 
         .emoji-grid {
@@ -1202,13 +1890,31 @@ const Chat = () => {
           overflow-y: auto;
         }
 
+        .emoji-grid::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .emoji-grid::-webkit-scrollbar-track {
+          background: var(--gray-100);
+          border-radius: 3px;
+        }
+
+        .emoji-grid::-webkit-scrollbar-thumb {
+          background: var(--gray-300);
+          border-radius: 3px;
+        }
+
+        .emoji-grid::-webkit-scrollbar-thumb:hover {
+          background: var(--gray-400);
+        }
+
         .emoji-item {
           background: transparent;
           border: none;
           font-size: 1.5rem;
           cursor: pointer;
           padding: 0.5rem;
-          border-radius: 8px;
+          border-radius: var(--radius-sm);
           transition: all 0.2s ease;
           display: flex;
           align-items: center;
@@ -1216,56 +1922,37 @@ const Chat = () => {
         }
 
         .emoji-item:hover {
-          background: #1e3c72;
+          background: var(--gray-100);
           transform: scale(1.2);
         }
 
-        .emoji-grid::-webkit-scrollbar {
-          width: 6px;
-        }
-
-        .emoji-grid::-webkit-scrollbar-track {
-          background: #f1f5f9;
-          border-radius: 3px;
-        }
-
-        .emoji-grid::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
-          border-radius: 3px;
-        }
-
-        .emoji-grid::-webkit-scrollbar-thumb:hover {
-          background: #94a3b8;
-        }
-
+        /* Pied de la zone de saisie */
         .input-footer {
           margin-top: 0.75rem;
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
         }
 
-        .offline-warning {
+        .offline-notice {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
           background: #fef3c7;
           color: #92400e;
           padding: 0.75rem 1rem;
-          border-radius: 12px;
-          margin-bottom: 0.5rem;
-          font-size: 0.9rem;
-          text-align: center;
+          border-radius: var(--radius-md);
+          font-size: 0.875rem;
           border: 1px solid #fcd34d;
         }
 
-        .uploading-message {
-          color: #f39c12;
-          font-size: 0.9rem;
-          margin-bottom: 0.5rem;
+        .file-info {
+          font-size: 0.75rem;
+          color: var(--gray-500);
           text-align: center;
         }
 
-        .file-info-text {
-          font-size: 0.8rem;
-          color: #94a3b8;
-          text-align: center;
-        }
-
+        /* Responsive */
         @media (max-width: 768px) {
           .chat-container {
             margin: 0;
@@ -1274,50 +1961,30 @@ const Chat = () => {
           }
 
           .chat-header {
-            padding: 1rem 1.5rem;
+            padding: 1rem 1.25rem;
           }
 
           .header-content {
             flex-direction: column;
+            align-items: stretch;
             gap: 1rem;
-            align-items: flex-start;
+          }
+
+          .header-actions {
+            justify-content: space-between;
           }
 
           .messages-container {
-            padding: 0.5rem 1rem;
+            padding: 1rem 1.25rem;
           }
 
           .message-wrapper {
             max-width: 90%;
           }
 
-          .date-separator {
-            margin: 1rem 0;
-          }
-
-          .separator-text {
-            font-size: 0.7rem;
-            padding: 0.4rem 0.8rem;
-          }
-
-          .input-container {
-            padding: 1rem 1.5rem;
-          }
-
-          .input-wrapper {
-            flex-direction: column;
-            gap: 1rem;
-          }
-
-          .send-button {
-            align-self: flex-end;
-          }
-
-          
-
           .emoji-picker {
-            left: 1rem;
-            right: 1rem;
+            left: 1.25rem;
+            right: 1.25rem;
             width: auto;
           }
 
@@ -1325,10 +1992,51 @@ const Chat = () => {
             grid-template-columns: repeat(6, 1fr);
           }
 
-          
+          .input-container {
+            padding: 1rem 1.25rem;
+          }
+
+          .send-text {
+            display: none;
+          }
+
+          .message-input {
+            min-height: 44px;
+            padding: 0.75rem 1rem;
+          }
+
+          .send-btn {
+            padding: 0.75rem;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .chat-title h1 {
+            font-size: 1.25rem;
+          }
+
+          .chat-subtitle {
+            font-size: 0.75rem;
+          }
+
+          .connection-status span {
+            display: none;
+          }
+
+          .emoji-grid {
+            grid-template-columns: repeat(5, 1fr);
+          }
+
+          .message-bubble {
+            padding: 0.75rem;
+          }
+
+          .document-attachment, .image-attachment {
+            max-width: 100%;
+          }
         }
       `}</style>
-    </div>
+    </>
   );
 };
 

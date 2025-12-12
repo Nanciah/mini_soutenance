@@ -426,17 +426,16 @@ const Chat = () => {
     }
 
     // Message temporaire
-    const tempId = Date.now();
-    const tempMessage = {
-      tempId,
-      userId: user.id,
-      username: user.type === 'admin' ? 'Administrateur' : user.nom,
-      message: messageContent,
-      type: user.type,
-      created_at: new Date().toISOString(),
-      isSending: true,
-      file: fileData
-    };
+const tempMessage = {
+  tempId,
+  userId: user.id,
+  username: user.type === 'admin' ? 'Administrateur' : (user.nom || 'Utilisateur'),
+  message: messageContent,
+  type: user.type,
+  created_at: new Date().toISOString(),
+  isSending: true,
+  file: fileData
+};
 
     setMessages(prev => [...prev, tempMessage]);
     setNewMessage('');
@@ -564,7 +563,7 @@ const Chat = () => {
             style={{ 
               background: `linear-gradient(135deg, ${getAvatarColor(msg.username)}, ${getAvatarColor(msg.username)}99)` 
             }}
-            title={msg.username}
+            title={msg.username || 'Utilisateur'}
           >
             {getInitials(msg.username)}
           </div>

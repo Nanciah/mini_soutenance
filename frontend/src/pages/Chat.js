@@ -8,7 +8,7 @@ import {
   FileText, 
   Download, 
   Trash2, 
-  Smile, 
+  Smile,
   Paperclip, 
   Check, 
   X, 
